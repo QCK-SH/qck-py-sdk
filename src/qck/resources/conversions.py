@@ -13,6 +13,7 @@ if TYPE_CHECKING:
         ConversionSummary,
         ConversionTimeseriesParams,
         ConversionTimeseriesPoint,
+        TimeToConvertData,
         TrackConversionParams,
     )
 
@@ -40,7 +41,7 @@ class ConversionsResource:
         event = {
             "link_id": params["link_id"],
             "visitor_id": params["visitor_id"],
-            "session_id": params.get("session_id", ""),
+            "session_id": params["session_id"],
             "event_type": "custom",
             "event_name": params["name"],
             "page_url": params.get("page_url", ""),
@@ -67,3 +68,14 @@ class ConversionsResource:
         self, params: "ConversionBreakdownParams"
     ) -> List["ConversionBreakdownEntry"]:
         return self._client.get("/conversions/breakdown", params=dict(params))
+
+    def time_to_convert(
+        self, params: Optional["ConversionScopeParams"] = None
+    ) -> "TimeToConvertData":
+        """Get time-to-convert distribution.
+
+        Shows how long visitors take from first click to conversion.
+        """
+        return self._client.get(
+            "/conversions/time-to-convert", params=dict(params) if params else None
+        )

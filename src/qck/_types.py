@@ -91,42 +91,77 @@ class AnalyticsSummaryParams(TypedDict, total=False):
     start_date: str
     end_date: str
     days: int
-    link_id: str
-
-
-class CountryEntry(TypedDict):
-    country: str
-    clicks: int
-
-
-class ReferrerEntry(TypedDict):
-    referrer: str
-    clicks: int
-
-
-class DeviceEntry(TypedDict):
-    device: str
-    clicks: int
 
 
 class AnalyticsSummary(TypedDict):
     total_clicks: int
     unique_visitors: int
-    top_countries: List[CountryEntry]
-    top_referrers: List[ReferrerEntry]
-    top_devices: List[DeviceEntry]
+    total_links: int
+    last_click_at: Optional[str]
+    today_clicks: int
+    yesterday_clicks: int
+    active_links: int
+    total_links_count: int
 
 
 class TimeseriesParams(TypedDict, total=False):
     start_date: str
     end_date: str
     days: int
-    link_id: str
-    interval: Literal["hour", "day", "week", "month"]
 
 
 class TimeseriesPoint(TypedDict):
     timestamp: str
+    clicks: int
+    unique_visitors: int
+
+
+class GeoAnalyticsParams(TypedDict, total=False):
+    days: int
+    start_date: str
+    end_date: str
+
+
+class GeoAnalyticsEntry(TypedDict):
+    country: str
+    country_code: str
+    clicks: int
+    unique_visitors: int
+
+
+class DeviceAnalyticsParams(TypedDict, total=False):
+    days: int
+    start_date: str
+    end_date: str
+
+
+class DeviceAnalyticsEntry(TypedDict):
+    device_type: str
+    browser: str
+    os: str
+    clicks: int
+
+
+class ReferrerAnalyticsParams(TypedDict, total=False):
+    days: int
+    start_date: str
+    end_date: str
+
+
+class ReferrerAnalyticsEntry(TypedDict):
+    referrer: str
+    clicks: int
+    unique_visitors: int
+
+
+class HourlyAnalyticsParams(TypedDict, total=False):
+    days: int
+    start_date: str
+    end_date: str
+
+
+class HourlyAnalyticsEntry(TypedDict):
+    hour: int
     clicks: int
     unique_visitors: int
 
@@ -310,11 +345,14 @@ class ConversionBreakdownParams(TypedDict, total=False):
     dimension: ConversionDimension
 
 
-class TrackConversionParams(TypedDict, total=False):
+class _TrackConversionRequired(TypedDict):
     link_id: str
     visitor_id: str
     session_id: str
     name: str
+
+
+class TrackConversionParams(_TrackConversionRequired, total=False):
     revenue: float
     currency: str
     page_url: str
@@ -340,3 +378,14 @@ class ConversionBreakdownEntry(TypedDict):
     conversions: int
     revenue: float
     conversion_rate: float
+
+
+class TimeToConvertBucket(TypedDict):
+    label: str
+    count: int
+
+
+class TimeToConvertData(TypedDict):
+    buckets: List[TimeToConvertBucket]
+    average_seconds: float
+    median_seconds: float
