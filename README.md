@@ -200,7 +200,7 @@ for domain in domains:
 ```python
 client = QCK(
     api_key="qck_your_api_key",
-    base_url="https://api.qck.sh/api/v1/developer",  # default
+    base_url="https://api.qck.sh/public-api/v1",  # default
     timeout=30,   # seconds, default 30
     retries=3,    # automatic retries, default 3
 )

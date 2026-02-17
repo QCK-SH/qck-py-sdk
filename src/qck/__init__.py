@@ -103,7 +103,7 @@ __all__ = [
 ]
 
 
-_DEFAULT_BASE_URL = "https://api.qck.sh/api/v1/developer"
+_DEFAULT_BASE_URL = "https://api.qck.sh/public-api/v1"
 
 
 class QCK:

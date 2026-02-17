@@ -17,7 +17,7 @@ from ._errors import (
 
 T = TypeVar("T")
 
-_DEFAULT_BASE_URL = "https://api.qck.sh/api/v1/developer"
+_DEFAULT_BASE_URL = "https://api.qck.sh/public-api/v1"
 _DEFAULT_TIMEOUT = 30
 _DEFAULT_RETRIES = 3
 _MAX_RETRY_DELAY = 120
