@@ -31,6 +31,15 @@ class PaginatedResponse(TypedDict):
 # Links
 # --------------------------------------------------------------------------
 
+class LinkMetadata(TypedDict, total=False):
+    title: str
+    description: str
+    og_image: str
+    domain: str
+    is_safe: bool
+    tags: List[str]
+
+
 class Link(TypedDict, total=False):
     id: str
     short_code: str
@@ -38,12 +47,19 @@ class Link(TypedDict, total=False):
     short_url: str
     title: str
     description: str
-    tags: List[str]
-    is_active: bool
     expires_at: str
-    click_count: int
     created_at: str
     updated_at: str
+    is_active: bool
+    tags: List[str]
+    is_password_protected: bool
+    metadata: LinkMetadata
+    total_clicks: int
+    unique_visitors: int
+    bot_clicks: int
+    last_accessed_at: str
+    domain_id: str
+    domain_name: str
 
 
 class CreateLinkParams(TypedDict, total=False):
@@ -51,18 +67,30 @@ class CreateLinkParams(TypedDict, total=False):
     custom_alias: str
     title: str
     description: str
+    og_image: str
     tags: List[str]
     expires_at: str
+    is_password_protected: bool
+    password: str
+    utm_source: str
+    utm_medium: str
+    utm_campaign: str
+    utm_term: str
+    utm_content: str
     domain_id: str
 
 
 class UpdateLinkParams(TypedDict, total=False):
-    original_url: str
+    url: str
+    custom_alias: str
     title: str
     description: str
-    tags: List[str]
+    og_image: str
+    expires_at: Optional[str]
     is_active: bool
-    expires_at: str
+    tags: List[str]
+    is_password_protected: bool
+    password: str
 
 
 class ListLinksParams(TypedDict, total=False):
@@ -283,11 +311,13 @@ class WebhookEndpoint(TypedDict, total=False):
     id: str
     url: str
     events: List[str]
-    description: str
     is_active: bool
+    description: str
     consecutive_failures: int
+    last_failure_at: str
     created_at: str
     updated_at: str
+    secret: str
 
 
 class CreateWebhookParams(TypedDict, total=False):
