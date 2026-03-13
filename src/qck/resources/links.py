@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import mimetypes
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 if TYPE_CHECKING:
@@ -42,3 +44,37 @@ class LinksResource:
 
     def get_stats(self, link_id: str) -> "LinkStats":
         return self._client.get(f"/links/{link_id}/stats")
+
+    def upload_og_image(self, link_id: str, file_path: str) -> Dict[str, Any]:
+        """Upload an OG image for a link.
+
+        Reads the file at *file_path*, detects its content type, and sends
+        the binary body via ``PUT /links/{link_id}/og-image``.
+
+        Supported formats: JPEG, PNG, WebP, and GIF.
+        """
+        _ALLOWED_CONTENT_TYPES = {
+            "image/jpeg",
+            "image/png",
+            "image/webp",
+            "image/gif",
+        }
+
+        path = Path(file_path)
+        content_type, _ = mimetypes.guess_type(str(path))
+        if content_type not in _ALLOWED_CONTENT_TYPES:
+            raise ValueError(
+                f"Unsupported image type '{content_type}'. "
+                f"Allowed: {', '.join(sorted(_ALLOWED_CONTENT_TYPES))}"
+            )
+
+        data = path.read_bytes()
+        return self._client.put(
+            f"/links/{link_id}/og-image",
+            content=data,
+            headers={"Content-Type": content_type},
+        )
+
+    def delete_og_image(self, link_id: str) -> None:
+        """Delete the OG image for a link."""
+        self._client.delete(f"/links/{link_id}/og-image")

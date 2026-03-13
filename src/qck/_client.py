@@ -83,6 +83,19 @@ class HttpClient:
     ) -> Any:
         return self._request("PATCH", path, json=body, params=params)
 
+    def put(
+        self,
+        path: str,
+        body: Any = None,
+        *,
+        params: Optional[Dict[str, Any]] = None,
+        content: Optional[bytes] = None,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> Any:
+        return self._request(
+            "PUT", path, json=body, params=params, content=content, headers=headers,
+        )
+
     def delete(
         self,
         path: str,
@@ -119,6 +132,8 @@ class HttpClient:
         *,
         json: Any = None,
         params: Optional[Dict[str, Any]] = None,
+        content: Optional[bytes] = None,
+        headers: Optional[Dict[str, str]] = None,
     ) -> Any:
         url = self._build_url(path)
         clean = self._clean_params(params)
@@ -126,7 +141,14 @@ class HttpClient:
 
         for attempt in range(self._retries + 1):
             try:
-                resp = self._client.request(method, url, json=json, params=clean)
+                resp = self._client.request(
+                    method,
+                    url,
+                    json=json if content is None else None,
+                    content=content,
+                    params=clean,
+                    headers=headers,
+                )
                 return self._handle_response(resp, attempt)
             except (RateLimitError, httpx.TimeoutException, httpx.ConnectError) as exc:
                 last_exc = exc
