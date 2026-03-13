@@ -97,10 +97,20 @@ class HttpClient:
         return f"{self._base_url}{path}"
 
     @staticmethod
-    def _clean_params(params: Optional[Dict[str, Any]]) -> Optional[Dict[str, str]]:
+    def _clean_params(params: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         if not params:
             return None
-        return {k: str(v) for k, v in params.items() if v is not None}
+        cleaned: Dict[str, Any] = {}
+        for k, v in params.items():
+            if v is None:
+                continue
+            if isinstance(v, list):
+                cleaned[k] = v
+            elif isinstance(v, bool):
+                cleaned[k] = str(v).lower()
+            else:
+                cleaned[k] = str(v)
+        return cleaned or None
 
     def _request(
         self,

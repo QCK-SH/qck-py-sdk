@@ -67,8 +67,18 @@ class UpdateLinkParams(TypedDict, total=False):
 
 class ListLinksParams(TypedDict, total=False):
     page: int
-    limit: int
+    per_page: int
     search: str
+    tags: List[str]
+    is_active: bool
+    has_password: bool
+    domain: str
+    domain_id: str
+    created_after: str
+    created_before: str
+    last_active_after: str
+    sort_by: str
+    sort_order: Literal["asc", "desc"]
 
 
 class BulkCreateParams(TypedDict):
@@ -91,6 +101,8 @@ class AnalyticsSummaryParams(TypedDict, total=False):
     start_date: str
     end_date: str
     days: int
+    bot_filter: Literal["real", "bot", "all"]
+    domain_name: str
 
 
 class AnalyticsSummary(TypedDict):
@@ -108,6 +120,8 @@ class TimeseriesParams(TypedDict, total=False):
     start_date: str
     end_date: str
     days: int
+    bot_filter: Literal["real", "bot", "all"]
+    domain_name: str
 
 
 class TimeseriesPoint(TypedDict):
@@ -120,6 +134,8 @@ class GeoAnalyticsParams(TypedDict, total=False):
     days: int
     start_date: str
     end_date: str
+    bot_filter: Literal["real", "bot", "all"]
+    domain_name: str
 
 
 class GeoAnalyticsEntry(TypedDict):
@@ -133,6 +149,8 @@ class DeviceAnalyticsParams(TypedDict, total=False):
     days: int
     start_date: str
     end_date: str
+    bot_filter: Literal["real", "bot", "all"]
+    domain_name: str
 
 
 class DeviceAnalyticsEntry(TypedDict):
@@ -146,6 +164,8 @@ class ReferrerAnalyticsParams(TypedDict, total=False):
     days: int
     start_date: str
     end_date: str
+    bot_filter: Literal["real", "bot", "all"]
+    domain_name: str
 
 
 class ReferrerAnalyticsEntry(TypedDict):
@@ -158,6 +178,8 @@ class HourlyAnalyticsParams(TypedDict, total=False):
     days: int
     start_date: str
     end_date: str
+    bot_filter: Literal["real", "bot", "all"]
+    domain_name: str
 
 
 class HourlyAnalyticsEntry(TypedDict):
@@ -176,6 +198,81 @@ class Domain(TypedDict, total=False):
     is_verified: bool
     is_default: bool
     created_at: str
+
+
+# --------------------------------------------------------------------------
+# Webhook Event Types
+# --------------------------------------------------------------------------
+
+WebhookEventType = Literal[
+    "link.created",
+    "link.updated",
+    "link.deleted",
+    "link.expired",
+    "domain.verified",
+    "domain.expired",
+    "domain.suspended",
+    "api_key.created",
+    "api_key.revoked",
+    "team.member_added",
+    "team.member_removed",
+    "subscription.upgraded",
+    "subscription.downgraded",
+    "bulk_import.completed",
+]
+
+WEBHOOK_EVENTS: Dict[str, str] = {
+    "LINK_CREATED": "link.created",
+    "LINK_UPDATED": "link.updated",
+    "LINK_DELETED": "link.deleted",
+    "LINK_EXPIRED": "link.expired",
+    "DOMAIN_VERIFIED": "domain.verified",
+    "DOMAIN_EXPIRED": "domain.expired",
+    "DOMAIN_SUSPENDED": "domain.suspended",
+    "API_KEY_CREATED": "api_key.created",
+    "API_KEY_REVOKED": "api_key.revoked",
+    "TEAM_MEMBER_ADDED": "team.member_added",
+    "TEAM_MEMBER_REMOVED": "team.member_removed",
+    "SUBSCRIPTION_UPGRADED": "subscription.upgraded",
+    "SUBSCRIPTION_DOWNGRADED": "subscription.downgraded",
+    "BULK_IMPORT_COMPLETED": "bulk_import.completed",
+}
+
+WEBHOOK_EVENT_CATEGORIES: Dict[str, List[str]] = {
+    "links": [
+        "link.created",
+        "link.updated",
+        "link.deleted",
+        "link.expired",
+    ],
+    "domains": [
+        "domain.verified",
+        "domain.expired",
+        "domain.suspended",
+    ],
+    "api_keys": [
+        "api_key.created",
+        "api_key.revoked",
+    ],
+    "team": [
+        "team.member_added",
+        "team.member_removed",
+    ],
+    "billing": [
+        "subscription.upgraded",
+        "subscription.downgraded",
+    ],
+    "bulk": [
+        "bulk_import.completed",
+    ],
+}
+
+
+class WebhookPayload(TypedDict, total=False):
+    """Shape of a webhook delivery payload received at your endpoint."""
+    event: str
+    timestamp: str
+    data: Dict[str, Any]
 
 
 # --------------------------------------------------------------------------
