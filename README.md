@@ -205,48 +205,32 @@ for entry in hourly:
 Track and analyze conversion events tied to your links.
 
 ```python
-# Track a conversion (server-side)
+# Track a conversion
 client.conversions.track({
-    "link_id": "link_id",              # required
-    "visitor_id": "vis_abc123",        # required
-    "session_id": "sess_xyz",          # required
-    "name": "purchase",                # required — conversion event name
-    "revenue": 49.99,                  # optional
+    "short_code": "abc123",            # required — link short code
+    "visitor_id": "user-456",          # required — your user ID
+    "name": "purchase",                # required — conversion name
+    "session_id": "sess-789",          # optional
+    "revenue": 49.99,                  # optional — dollars, converted to cents internally
     "currency": "USD",                 # optional (default: 'USD')
-    "page_url": "https://example.com/checkout",  # optional
-    "event_data": {"plan": "pro"},     # optional — arbitrary metadata
+    "page_url": "/checkout",           # optional
+    "properties": {"plan": "pro"},     # optional — stored in ClickHouse JSON column
 })
 
-# Conversion summary
+# Conversion summary (org-wide or scoped)
 summary = client.conversions.summary({
-    "period": "30d",                   # '7d' | '30d' | '90d'
-    "domain_id": "dom_123",           # optional
-    "link_id": "link_id",             # optional
+    "period": "30d",
+    "short_code": "abc123",            # optional — scope to a link
 })
-# summary["total_conversions"], summary["unique_converters"]
-# summary["total_revenue"], summary["average_order_value"], summary["conversion_rate"]
 
 # Conversion timeseries
-points = client.conversions.timeseries({
-    "period": "30d",
-    "interval": "day",                 # 'hour' | 'day' | 'week' | 'month'
-})
-for point in points:
-    print(f"{point['timestamp']}: {point['conversions']} conversions, ${point['revenue']}")
+points = client.conversions.timeseries({"period": "30d", "interval": "day"})
 
 # Breakdown by dimension
-by_source = client.conversions.breakdown({
-    "dimension": "source",             # 'source' | 'device' | 'country' | 'link' | 'name'
-    "period": "30d",
-})
-for entry in by_source:
-    print(f"{entry['label']}: {entry['conversions']} ({entry['conversion_rate']:.1%})")
+by_name = client.conversions.breakdown({"dimension": "name", "period": "30d"})
 
 # Time-to-convert analysis
 ttc = client.conversions.time_to_convert({"period": "30d"})
-print(f"Average: {ttc['average_seconds']}s, Median: {ttc['median_seconds']}s")
-for bucket in ttc["buckets"]:
-    print(f"{bucket['label']}: {bucket['count']} conversions")
 ```
 
 #### Conversions API Reference
@@ -261,83 +245,106 @@ for bucket in ttc["buckets"]:
 
 ### Journey Tracking
 
-Track user journeys across pages after clicking a link. Supports event ingestion, funnel analysis, and session replay.
+Track visitor journeys from any platform — websites, mobile apps, server-side. After a user clicks your QCK short link, they're redirected with `?qck_id=<short_code>` in the URL.
+
+**Event types** (Enum — must be one of these):
+
+| Type | Use for | Key fields |
+|------|---------|------------|
+| `page_view` | Page/screen loads | `page_url`, `page_title` |
+| `scroll_depth` | Scroll tracking | `scroll_percent` (0-100) |
+| `time_on_page` | Time on page/screen | `time_on_page` (seconds) |
+| `custom` | Any user-defined event | `event_name`, `properties` |
+| `conversion` | Purchase, signup, lead | `conversion_name`, `revenue_cents`, `currency` |
 
 ```python
-# Ingest journey events
-client.journey.ingest({
-    "events": [
-        {
-            "link_id": "link_id",           # required
-            "visitor_id": "vis_abc123",     # required
-            "session_id": "sess_1",         # required
-            "event_type": "page_view",      # 'page_view' | 'scroll_depth' | 'time_on_page' | 'custom' | 'conversion'
-            "page_url": "https://example.com/pricing",
-            "page_title": "Pricing",        # optional
-            "referrer_url": "https://google.com",  # optional
-        },
-        {
-            "link_id": "link_id",
-            "visitor_id": "vis_abc123",
-            "session_id": "sess_1",
-            "event_type": "scroll_depth",
-            "page_url": "https://example.com/pricing",
-            "scroll_percent": 75,           # 0-100
-        },
-        {
-            "link_id": "link_id",
-            "visitor_id": "vis_abc123",
-            "session_id": "sess_1",
-            "event_type": "custom",
-            "event_name": "cta_click",      # required for 'custom' events
-            "page_url": "https://example.com/pricing",
-            "event_data": {"button": "hero"},  # optional metadata
-        },
-    ]
-})
+# Ingest journey events (batch up to 100 per request)
+client.journey.ingest({"events": [
+    # Page view
+    {
+        "short_code": "abc123",
+        "visitor_id": "user-456",
+        "session_id": "sess-789",       # optional
+        "event_type": "page_view",
+        "page_url": "/pricing",
+        "page_title": "Pricing",
+    },
+    # Scroll depth
+    {
+        "short_code": "abc123",
+        "visitor_id": "user-456",
+        "event_type": "scroll_depth",
+        "page_url": "/pricing",
+        "scroll_percent": 75,
+    },
+    # Custom event with properties
+    {
+        "short_code": "abc123",
+        "visitor_id": "user-456",
+        "event_type": "custom",
+        "event_name": "cta_click",
+        "page_url": "/pricing",
+        "properties": {"button": "hero", "variant": "B"},
+    },
+    # Conversion with revenue
+    {
+        "short_code": "abc123",
+        "visitor_id": "user-456",
+        "event_type": "conversion",
+        "conversion_name": "purchase",
+        "revenue_cents": 4999,           # $49.99
+        "currency": "USD",
+        "properties": {"plan": "pro"},
+    },
+]})
 
-# Link journey summary
-summary = client.journey.get_summary("link_id", {"period": "30d"})
-# summary["total_visitors"], summary["total_sessions"], summary["total_events"]
-# summary["avg_session_duration_seconds"]
-# summary["top_pages"]: [{"url": ..., "count": ...}]
-# summary["top_events"]: [{"name": ..., "count": ...}]
+# Context fields (all optional — your data)
+client.journey.ingest({"events": [{
+    "short_code": "abc123",
+    "visitor_id": "user-456",
+    "event_type": "page_view",
+    "page_url": "/home",
+    "country_code": "US",
+    "device_type": "mobile",
+    "browser": "Chrome",
+    "os": "iOS",
+    "os_version": "17.2",
+}]})
+
+# Journey summary
+summary = client.journey.get_summary("abc123", {"period": "30d"})
 
 # Funnel analysis
-funnel = client.journey.get_funnel("link_id", {
+funnel = client.journey.get_funnel("abc123", {
     "steps": ["page_view", "cta_click", "purchase"],
     "period": "30d",
 })
-# funnel["total_visitors"]
-for step in funnel["steps"]:
-    print(f"{step['step_name']}: {step['visitors']} ({step['conversion_rate']:.1%})")
 
-# List sessions (paginated)
-sessions = client.journey.list_sessions("link_id", {
-    "period": "7d",
-    "limit": 10,
-    "visitor_id": "vis_abc123",    # optional, filter by visitor
-})
-# sessions["data"]: list of SessionSummary
+# List sessions
+sessions = client.journey.list_sessions("abc123", {"period": "7d", "limit": 10})
 
-# List events (paginated)
-events = client.journey.list_events("link_id", {
-    "event_type": "custom",        # optional filter
-    "period": "7d",
-    "limit": 50,
-})
-# events["data"]: list of JourneyEvent
+# List events
+events = client.journey.list_events("abc123", {"event_type": "custom", "period": "7d"})
+```
+
+**cURL example:**
+
+```bash
+curl -X POST https://qck.sh/public-api/v1/journey/events \
+  -H "X-API-Key: qck_your_api_key_here" \
+  -H "Content-Type: application/json" \
+  -d '{"events":[{"short_code":"abc123","visitor_id":"user-456","event_type":"page_view","page_url":"/pricing"}]}'
 ```
 
 #### Journey API Reference
 
 | Method | Parameters | Returns | Description |
 |--------|-----------|---------|-------------|
-| `ingest(params)` | `IngestEventsParams` | `None` | Batch ingest journey events |
-| `get_summary(link_id, params?)` | `str, JourneyQueryParams` | `JourneyLinkSummary` | Link journey summary |
-| `get_funnel(link_id, params)` | `str, FunnelParams` | `FunnelResult` | Funnel analysis |
-| `list_sessions(link_id, params?)` | `str, ListJourneySessionsParams` | `PaginatedResponse` | List visitor sessions |
-| `list_events(link_id, params?)` | `str, ListJourneyEventsParams` | `PaginatedResponse` | List journey events |
+| `ingest(params)` | `IngestEventsParams` | `None` | Batch ingest journey events (1-100) |
+| `get_summary(short_code, params?)` | `str, JourneyQueryParams` | `JourneyLinkSummary` | Link journey summary |
+| `get_funnel(short_code, params)` | `str, FunnelParams` | `FunnelResult` | Funnel analysis |
+| `list_sessions(short_code, params?)` | `str, ListJourneySessionsParams` | `PaginatedResponse` | List visitor sessions |
+| `list_events(short_code, params?)` | `str, ListJourneyEventsParams` | `PaginatedResponse` | List journey events |
 
 ### Webhooks
 

@@ -521,6 +521,7 @@ WebhookEventType = Literal[
     "subscription.upgraded",
     "subscription.downgraded",
     "bulk_import.completed",
+    "conversion",
 ]
 
 WEBHOOK_EVENTS: Dict[str, str] = {
@@ -538,6 +539,7 @@ WEBHOOK_EVENTS: Dict[str, str] = {
     "SUBSCRIPTION_UPGRADED": "subscription.upgraded",
     "SUBSCRIPTION_DOWNGRADED": "subscription.downgraded",
     "BULK_IMPORT_COMPLETED": "bulk_import.completed",
+    "CONVERSION": "conversion",
 }
 
 WEBHOOK_EVENT_CATEGORIES: Dict[str, List[str]] = {
@@ -566,6 +568,9 @@ WEBHOOK_EVENT_CATEGORIES: Dict[str, List[str]] = {
     ],
     "bulk": [
         "bulk_import.completed",
+    ],
+    "journey": [
+        "conversion",
     ],
 }
 
@@ -698,33 +703,52 @@ class JourneyEvent(TypedDict, total=False):
     """A single visitor journey event to ingest.
 
     Attributes:
-        link_id: ID of the short link this event is associated with.
-        visitor_id: Unique visitor identifier.
-        session_id: Session identifier grouping related events.
-        event_type: Type of event: ``"page_view"``, ``"scroll_depth"``,
-            ``"time_on_page"``, ``"custom"``, or ``"conversion"``.
-        event_name: Human-readable event name (e.g. ``"signup"``).
-        page_url: URL of the page where the event occurred.
-        page_title: Title of the page where the event occurred.
-        referrer_url: Referrer URL for this page view.
-        event_data: Arbitrary key-value metadata for the event.
+        short_code: Short code of the QCK link (e.g. ``"abc123"``).
+        visitor_id: Unique visitor identifier (user-managed).
+        session_id: Session identifier (optional, enables session analytics).
+        event_type: Type of event.
+        event_name: Event name for custom/conversion events.
+        page_url: Page URL (web) or screen/route name (mobile/server).
+        page_title: Page or screen title.
         scroll_percent: Scroll depth percentage (0-100).
         time_on_page: Time spent on the page in seconds.
         timestamp: ISO-8601 timestamp of the event.
+        conversion_name: Conversion name (for conversion events).
+        revenue_cents: Revenue in cents (e.g. $49.99 = 4999).
+        currency: ISO 4217 currency code (e.g. ``"USD"``).
+        country_code: 2-char ISO 3166-1 country code.
+        city: City name.
+        region: State/province.
+        device_type: Device type (e.g. ``"mobile"``, ``"desktop"``).
+        browser: Browser name.
+        browser_version: Browser version.
+        os: Operating system name.
+        os_version: OS version.
+        properties: Arbitrary properties (stored in ClickHouse JSON column).
     """
 
-    link_id: str
+    short_code: str
     visitor_id: str
     session_id: str
     event_type: Literal["page_view", "scroll_depth", "time_on_page", "custom", "conversion"]
     event_name: str
     page_url: str
     page_title: str
-    referrer_url: str
-    event_data: Dict[str, Any]
     scroll_percent: int
     time_on_page: int
     timestamp: str
+    conversion_name: str
+    revenue_cents: int
+    currency: str
+    country_code: str
+    city: str
+    region: str
+    device_type: str
+    browser: str
+    browser_version: str
+    os: str
+    os_version: str
+    properties: Dict[str, Any]
 
 
 class IngestEventsParams(TypedDict):
@@ -919,83 +943,54 @@ class ConversionScopeParams(TypedDict, total=False):
     """Scope/filter parameters shared by conversion endpoints.
 
     Attributes:
-        period: Time window: ``"7d"``, ``"30d"``, or ``"90d"``.
+        period: Time window.
         domain_id: Filter to conversions from a specific domain.
-        link_id: Filter to conversions from a specific link.
+        short_code: Filter to conversions from a specific link.
     """
 
     period: ConversionPeriod
     domain_id: str
-    link_id: str
+    short_code: str
 
 
 class ConversionTimeseriesParams(TypedDict, total=False):
-    """Parameters for the conversion timeseries endpoint.
-
-    Attributes:
-        period: Time window: ``"7d"``, ``"30d"``, or ``"90d"``.
-        domain_id: Filter to conversions from a specific domain.
-        link_id: Filter to conversions from a specific link.
-        interval: Bucket interval: ``"hour"``, ``"day"``, ``"week"``,
-            or ``"month"``.
-    """
+    """Parameters for the conversion timeseries endpoint."""
 
     period: ConversionPeriod
     domain_id: str
-    link_id: str
+    short_code: str
     interval: ConversionInterval
 
 
 class ConversionBreakdownParams(TypedDict, total=False):
-    """Parameters for the conversion breakdown endpoint.
-
-    Attributes:
-        period: Time window: ``"7d"``, ``"30d"``, or ``"90d"``.
-        domain_id: Filter to conversions from a specific domain.
-        link_id: Filter to conversions from a specific link.
-        dimension: Breakdown dimension: ``"source"``, ``"device"``,
-            ``"country"``, ``"link"``, or ``"name"``.
-    """
+    """Parameters for the conversion breakdown endpoint."""
 
     period: ConversionPeriod
     domain_id: str
-    link_id: str
+    short_code: str
     dimension: ConversionDimension
 
 
 class _TrackConversionRequired(TypedDict):
-    """Required fields for tracking a conversion event.
+    """Required fields for tracking a conversion event."""
 
-    Attributes:
-        link_id: ID of the link that drove the conversion.
-        visitor_id: Unique visitor identifier.
-        session_id: Session identifier for the conversion.
-        name: Conversion event name (e.g. ``"purchase"``, ``"signup"``).
-    """
-
-    link_id: str
+    short_code: str
     visitor_id: str
-    session_id: str
     name: str
 
 
 class TrackConversionParams(_TrackConversionRequired, total=False):
     """Parameters for tracking a conversion event.
 
-    Inherits required fields (``link_id``, ``visitor_id``,
-    ``session_id``, ``name``) from :class:`_TrackConversionRequired`.
-
-    Attributes:
-        revenue: Revenue amount attributed to this conversion.
-        currency: ISO 4217 currency code (defaults to ``"USD"``).
-        page_url: URL of the page where the conversion occurred.
-        event_data: Arbitrary key-value metadata for the conversion.
+    Required: ``short_code``, ``visitor_id``, ``name``.
+    Optional: ``session_id``, ``revenue``, ``currency``, ``page_url``, ``properties``.
     """
 
+    session_id: str
     revenue: float
     currency: str
     page_url: str
-    event_data: Dict[str, Any]
+    properties: Dict[str, Any]
 
 
 class ConversionSummary(TypedDict):

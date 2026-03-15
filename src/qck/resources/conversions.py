@@ -12,7 +12,7 @@ Example::
 
     # Track a purchase conversion
     client.conversions.track({
-        "link_id": "lnk_abc123",
+        "short_code": "abc123",
         "visitor_id": "vis_xyz",
         "session_id": "sess_456",
         "name": "purchase",
@@ -60,27 +60,21 @@ class ConversionsResource:
         self._client = client
 
     def track(self, params: "TrackConversionParams") -> None:
-        """Track a conversion event by ingesting it as a journey event.
+        """Track a conversion event.
 
         Use this from server-side code, mobile apps, or any HTTP client.
-        For browser-side tracking, use the qck-tracker.js snippet instead.
         """
-        event_data: Dict[str, Any] = {
-            **(params.get("event_data") or {}),
-            "name": params["name"],
-            "revenue": str(params.get("revenue", 0)),
-            "currency": params.get("currency", "USD"),
-            "event_type_override": "conversion",
-        }
-
         event = {
-            "link_id": params["link_id"],
+            "short_code": params["short_code"],
             "visitor_id": params["visitor_id"],
             "session_id": params["session_id"],
-            "event_type": "custom",
+            "event_type": "conversion",
             "event_name": params["name"],
             "page_url": params.get("page_url", ""),
-            "event_data": event_data,
+            "conversion_name": params["name"],
+            "revenue_cents": round((params.get("revenue", 0) or 0) * 100),
+            "currency": params.get("currency", "USD"),
+            "properties": params.get("properties") or {},
         }
 
         self._client.post("/journey/events", {"events": [event]})

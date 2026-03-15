@@ -110,6 +110,7 @@ class HttpClient:
         body: Any = None,
         *,
         params: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, str]] = None,
     ) -> Any:
         """Send a POST request with an optional JSON body.
 
@@ -117,6 +118,7 @@ class HttpClient:
             path: API path (e.g. ``/links``).
             body: Request body serialised as JSON.
             params: Optional query-string parameters.
+            headers: Optional extra HTTP headers.
 
         Returns:
             Parsed JSON response data (envelope unwrapped).
@@ -124,7 +126,7 @@ class HttpClient:
         Raises:
             QCKError: On any API error response.
         """
-        return self._request("POST", path, json=body, params=params)
+        return self._request("POST", path, json=body, params=params, headers=headers)
 
     def patch(
         self,

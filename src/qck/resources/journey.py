@@ -13,21 +13,21 @@ Example::
     # Ingest journey events
     client.journey.ingest({"events": [
         {
-            "link_id": "lnk_abc123",
-            "visitor_id": "vis_xyz",
-            "session_id": "sess_456",
+            "short_code": "abc123",
+            "visitor_id": "user-456",
+            "session_id": "sess-789",
             "event_type": "page_view",
-            "page_url": "https://example.com/landing",
+            "page_url": "/pricing",
         },
     ]})
 
     # Get journey summary for a link
-    summary = client.journey.get_summary("lnk_abc123", {"period": "30d"})
+    summary = client.journey.get_summary("abc123", {"period": "30d"})
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, Optional
 
 if TYPE_CHECKING:
     from .._client import HttpClient
@@ -46,104 +46,76 @@ if TYPE_CHECKING:
 class JourneyResource:
     """Ingest journey events and query link-level journey analytics.
 
-    Access via ``client.journey``. Provides methods to send visitor
-    behaviour events to the QCK platform and to retrieve analytics
-    about how visitors interact after clicking a link.
+    Access via ``client.journey``. Works with any platform — websites,
+    mobile apps, and server-side.
 
     Attributes:
         _client: The underlying HTTP client used for API calls.
     """
 
     def __init__(self, client: "HttpClient") -> None:
-        """Initialise the journey resource.
-
-        Args:
-            client: HTTP client instance for making API requests.
-        """
         self._client = client
 
     def ingest(self, params: "IngestEventsParams") -> None:
         """Ingest a batch of journey events.
 
         Events are processed asynchronously by the QCK platform.
-
-        Args:
-            params: Contains a list of journey events to ingest.
-
-        Raises:
-            ValidationError: If any event fails validation.
+        Each call generates a unique idempotency key to prevent
+        duplicate processing on retries.
 
         Example:
             >>> client.journey.ingest({"events": [
             ...     {
-            ...         "link_id": "lnk_abc123",
-            ...         "visitor_id": "vis_xyz",
-            ...         "session_id": "sess_456",
+            ...         "short_code": "abc123",
+            ...         "visitor_id": "user-456",
+            ...         "session_id": "sess-789",
             ...         "event_type": "page_view",
-            ...         "page_url": "https://example.com",
+            ...         "page_url": "/pricing",
             ...     },
             ... ]})
         """
-        self._client.post("/journey/events", dict(params))
+        import uuid
+
+        batch_id = str(uuid.uuid4())
+        self._client.post(
+            "/journey/events",
+            dict(params),
+            headers={"X-Idempotency-Key": batch_id},
+        )
 
     def get_summary(
         self,
-        link_id: str,
+        short_code: str,
         params: Optional["JourneyQueryParams"] = None,
     ) -> "JourneyLinkSummary":
         """Get a journey summary for a specific link.
 
-        Returns aggregate metrics about visitor behaviour after
-        clicking this link, including top pages and top events.
-
         Args:
-            link_id: The unique link identifier.
-            params: Optional period filter. Pass ``None`` to use
-                the API default.
+            short_code: The link's short code (e.g. "abc123").
+            params: Optional period filter.
 
         Returns:
             A summary with visitor/session counts, average session
             duration, and top pages/events.
-
-        Raises:
-            NotFoundError: If no link exists with the given ID.
-
-        Example:
-            >>> summary = client.journey.get_summary(
-            ...     "lnk_abc123", {"period": "30d"}
-            ... )
-            >>> print(summary["total_visitors"])
         """
         return self._client.get(
-            f"/journey/links/{link_id}/summary",
+            f"/journey/links/{short_code}/summary",
             params=dict(params) if params else None,
         )
 
-    def get_funnel(self, link_id: str, params: "FunnelParams") -> "FunnelResult":
+    def get_funnel(self, short_code: str, params: "FunnelParams") -> "FunnelResult":
         """Run a funnel analysis for a specific link.
 
-        A funnel tracks how many visitors progress through a defined
-        sequence of event steps (e.g. page_view -> signup -> purchase).
-
         Args:
-            link_id: The unique link identifier.
+            short_code: The link's short code.
             params: Funnel configuration with ordered step names and
                 an optional period filter.
 
-        Returns:
-            A funnel result with per-step visitor counts and
-            conversion rates.
-
-        Raises:
-            NotFoundError: If no link exists with the given ID.
-
         Example:
-            >>> funnel = client.journey.get_funnel("lnk_abc123", {
+            >>> funnel = client.journey.get_funnel("abc123", {
             ...     "steps": ["page_view", "signup", "purchase"],
             ...     "period": "30d",
             ... })
-            >>> for step in funnel["steps"]:
-            ...     print(step["step_name"], step["conversion_rate"])
         """
         p: Dict[str, str] = {}
         steps = params.get("steps")
@@ -152,63 +124,36 @@ class JourneyResource:
         period = params.get("period")
         if period:
             p["period"] = period
-        return self._client.get(f"/journey/links/{link_id}/funnel", params=p)
+        return self._client.get(f"/journey/links/{short_code}/funnel", params=p)
 
     def list_sessions(
         self,
-        link_id: str,
+        short_code: str,
         params: Optional["ListJourneySessionsParams"] = None,
     ) -> "PaginatedResponse":
         """List visitor sessions for a specific link.
 
         Args:
-            link_id: The unique link identifier.
+            short_code: The link's short code.
             params: Pagination, visitor filter, and period options.
-                Pass ``None`` for defaults.
-
-        Returns:
-            A paginated response containing session summaries.
-
-        Raises:
-            NotFoundError: If no link exists with the given ID.
-
-        Example:
-            >>> sessions = client.journey.list_sessions(
-            ...     "lnk_abc123", {"limit": 10}
-            ... )
-            >>> for s in sessions["data"]:
-            ...     print(s["session_id"], s["event_count"])
         """
         return self._client.get(
-            f"/journey/links/{link_id}/sessions",
+            f"/journey/links/{short_code}/sessions",
             params=dict(params) if params else None,
         )
 
     def list_events(
         self,
-        link_id: str,
+        short_code: str,
         params: Optional["ListJourneyEventsParams"] = None,
     ) -> "PaginatedResponse":
         """List journey events for a specific link.
 
         Args:
-            link_id: The unique link identifier.
+            short_code: The link's short code.
             params: Pagination, event type filter, and period options.
-                Pass ``None`` for defaults.
-
-        Returns:
-            A paginated response containing journey events.
-
-        Raises:
-            NotFoundError: If no link exists with the given ID.
-
-        Example:
-            >>> events = client.journey.list_events(
-            ...     "lnk_abc123",
-            ...     {"event_type": "page_view", "limit": 20},
-            ... )
         """
         return self._client.get(
-            f"/journey/links/{link_id}/events",
+            f"/journey/links/{short_code}/events",
             params=dict(params) if params else None,
         )
