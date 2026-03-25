@@ -8,7 +8,7 @@ Example::
     from qck import QCK
 
     client = QCK(api_key="qck_...")
-    domains = client.domains.list("org_abc123")
+    domains = client.domains.list()
     for d in domains:
         print(d["domain"], d["is_verified"])
 """
@@ -41,18 +41,16 @@ class DomainsResource:
         """
         self._client = client
 
-    def list(self, organization_id: str) -> List["Domain"]:
-        """List all custom domains for an organisation.
-
-        Args:
-            organization_id: The unique organisation identifier.
+    def list(self) -> List["Domain"]:
+        """List all custom domains for the organization associated with the API key.
 
         Returns:
             List of domain objects including verification status.
 
         Example:
-            >>> domains = client.domains.list("org_abc123")
+            >>> domains = client.domains.list()
             >>> for d in domains:
             ...     print(d["domain"], d["is_verified"])
         """
-        return self._client.get("/domains", params={"organizationId": organization_id})
+        response = self._client.get("/domains")
+        return response["domains"]

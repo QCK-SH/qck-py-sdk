@@ -91,7 +91,7 @@ class Link(TypedDict, total=False):
 
     Attributes:
         id: Unique link identifier.
-        short_code: The generated or custom alias (e.g. ``"abc123"``).
+        link_id: The generated or custom alias (e.g. ``"abc123"``).
         original_url: The destination URL the short link redirects to.
         short_url: Fully qualified short URL (e.g. ``"https://qck.sh/abc123"``).
         title: User-supplied or scraped page title.
@@ -112,7 +112,7 @@ class Link(TypedDict, total=False):
     """
 
     id: str
-    short_code: str
+    link_id: str
     original_url: str
     short_url: str
     title: str
@@ -248,21 +248,36 @@ class BulkCreateParams(TypedDict):
 
 
 class LinkStats(TypedDict):
-    """Aggregated click statistics for a single link.
+    """Click statistics for a single link.
 
     Attributes:
+        short_code: The link's short code (e.g. ``"abc123"``).
+        original_url: The destination URL.
         total_clicks: Total click count.
-        unique_clicks: Unique visitor click count.
-        clicks_by_country: Click counts keyed by ISO country code.
-        clicks_by_device: Click counts keyed by device type.
-        clicks_by_referrer: Click counts keyed by referrer domain.
+        unique_visitors: Unique visitor count.
+        bot_clicks: Bot/crawler click count.
+        human_clicks: Total clicks minus bot clicks.
+        created_at: ISO-8601 creation timestamp.
+        last_accessed_at: ISO-8601 timestamp of most recent click,
+            or ``None`` if never clicked.
+        is_active: Whether the link is currently active.
+        days_active: Days since the link was created.
+        average_clicks_per_day: Average clicks per day since creation.
+        conversion_rate: Ratio of unique visitors to total clicks (0-1).
     """
 
+    short_code: str
+    original_url: str
     total_clicks: int
-    unique_clicks: int
-    clicks_by_country: Dict[str, int]
-    clicks_by_device: Dict[str, int]
-    clicks_by_referrer: Dict[str, int]
+    unique_visitors: int
+    bot_clicks: int
+    human_clicks: int
+    created_at: str
+    last_accessed_at: Optional[str]
+    is_active: bool
+    days_active: int
+    average_clicks_per_day: float
+    conversion_rate: float
 
 
 # --------------------------------------------------------------------------
@@ -703,7 +718,7 @@ class JourneyEvent(TypedDict, total=False):
     """A single visitor journey event to ingest.
 
     Attributes:
-        short_code: Short code of the QCK link (e.g. ``"abc123"``).
+        link_id: UUID of the QCK link. Read from ``?qck_link=`` URL param.
         visitor_id: Unique visitor identifier (user-managed).
         session_id: Session identifier (optional, enables session analytics).
         event_type: Type of event.
@@ -727,7 +742,7 @@ class JourneyEvent(TypedDict, total=False):
         properties: Arbitrary properties (stored in ClickHouse JSON column).
     """
 
-    short_code: str
+    link_id: str
     visitor_id: str
     session_id: str
     event_type: Literal["page_view", "scroll_depth", "time_on_page", "custom", "conversion"]
@@ -834,15 +849,23 @@ class FunnelResult(TypedDict):
     total_visitors: int
 
 
-class FunnelParams(TypedDict, total=False):
+class _FunnelParamsRequired(TypedDict):
+    """Required fields for a funnel analysis query."""
+
+    steps: List[str]
+
+
+class FunnelParams(_FunnelParamsRequired, total=False):
     """Parameters for a funnel analysis query.
+
+    Required: ``steps``.
+    Optional: ``period``.
 
     Attributes:
         steps: Ordered list of event names defining the funnel stages.
         period: Time window: ``"7d"``, ``"30d"``, or ``"90d"``.
     """
 
-    steps: List[str]
     period: Literal["7d", "30d", "90d"]
 
 
@@ -936,7 +959,7 @@ class ListJourneyEventsParams(TypedDict, total=False):
 
 ConversionPeriod = Literal["7d", "30d", "90d"]
 ConversionInterval = Literal["hour", "day", "week", "month"]
-ConversionDimension = Literal["source", "device", "country", "link", "name"]
+ConversionDimension = Literal["device", "country", "link", "name"]
 
 
 class ConversionScopeParams(TypedDict, total=False):
@@ -945,12 +968,12 @@ class ConversionScopeParams(TypedDict, total=False):
     Attributes:
         period: Time window.
         domain_id: Filter to conversions from a specific domain.
-        short_code: Filter to conversions from a specific link.
+        link_id: Filter to conversions from a specific link.
     """
 
     period: ConversionPeriod
     domain_id: str
-    short_code: str
+    link_id: str
 
 
 class ConversionTimeseriesParams(TypedDict, total=False):
@@ -958,7 +981,7 @@ class ConversionTimeseriesParams(TypedDict, total=False):
 
     period: ConversionPeriod
     domain_id: str
-    short_code: str
+    link_id: str
     interval: ConversionInterval
 
 
@@ -967,14 +990,14 @@ class ConversionBreakdownParams(TypedDict, total=False):
 
     period: ConversionPeriod
     domain_id: str
-    short_code: str
+    link_id: str
     dimension: ConversionDimension
 
 
 class _TrackConversionRequired(TypedDict):
     """Required fields for tracking a conversion event."""
 
-    short_code: str
+    link_id: str
     visitor_id: str
     name: str
 
@@ -982,7 +1005,7 @@ class _TrackConversionRequired(TypedDict):
 class TrackConversionParams(_TrackConversionRequired, total=False):
     """Parameters for tracking a conversion event.
 
-    Required: ``short_code``, ``visitor_id``, ``name``.
+    Required: ``link_id``, ``visitor_id``, ``name``.
     Optional: ``session_id``, ``revenue``, ``currency``, ``page_url``, ``properties``.
     """
 

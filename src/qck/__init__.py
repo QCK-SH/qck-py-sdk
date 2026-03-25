@@ -168,7 +168,7 @@ class QCK:
 
         # Track a conversion
         client.conversions.track({
-            "short_code": link["short_code"],
+            "link_id": link["id"],
             "visitor_id": "user-123",
             "name": "purchase",
             "revenue": 49.99,

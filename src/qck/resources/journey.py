@@ -13,7 +13,7 @@ Example::
     # Ingest journey events
     client.journey.ingest({"events": [
         {
-            "short_code": "abc123",
+            "link_id": "550e8400-e29b-41d4-a716-446655440000",
             "visitor_id": "user-456",
             "session_id": "sess-789",
             "event_type": "page_view",
@@ -22,7 +22,7 @@ Example::
     ]})
 
     # Get journey summary for a link
-    summary = client.journey.get_summary("abc123", {"period": "30d"})
+    summary = client.journey.get_summary("550e8400-e29b-41d4-a716-446655440000", {"period": "30d"})
 """
 
 from __future__ import annotations
@@ -66,7 +66,7 @@ class JourneyResource:
         Example:
             >>> client.journey.ingest({"events": [
             ...     {
-            ...         "short_code": "abc123",
+            ...         "link_id": "550e8400-e29b-41d4-a716-446655440000",
             ...         "visitor_id": "user-456",
             ...         "session_id": "sess-789",
             ...         "event_type": "page_view",
@@ -85,13 +85,13 @@ class JourneyResource:
 
     def get_summary(
         self,
-        short_code: str,
+        link_id: str,
         params: Optional["JourneyQueryParams"] = None,
     ) -> "JourneyLinkSummary":
         """Get a journey summary for a specific link.
 
         Args:
-            short_code: The link's short code (e.g. "abc123").
+            link_id: The link's UUID.
             params: Optional period filter.
 
         Returns:
@@ -99,15 +99,15 @@ class JourneyResource:
             duration, and top pages/events.
         """
         return self._client.get(
-            f"/journey/links/{short_code}/summary",
+            f"/journey/links/{link_id}/summary",
             params=dict(params) if params else None,
         )
 
-    def get_funnel(self, short_code: str, params: "FunnelParams") -> "FunnelResult":
+    def get_funnel(self, link_id: str, params: "FunnelParams") -> "FunnelResult":
         """Run a funnel analysis for a specific link.
 
         Args:
-            short_code: The link's short code.
+            link_id: The link's UUID.
             params: Funnel configuration with ordered step names and
                 an optional period filter.
 
@@ -124,36 +124,36 @@ class JourneyResource:
         period = params.get("period")
         if period:
             p["period"] = period
-        return self._client.get(f"/journey/links/{short_code}/funnel", params=p)
+        return self._client.get(f"/journey/links/{link_id}/funnel", params=p)
 
     def list_sessions(
         self,
-        short_code: str,
+        link_id: str,
         params: Optional["ListJourneySessionsParams"] = None,
     ) -> "PaginatedResponse":
         """List visitor sessions for a specific link.
 
         Args:
-            short_code: The link's short code.
+            link_id: The link's UUID.
             params: Pagination, visitor filter, and period options.
         """
         return self._client.get(
-            f"/journey/links/{short_code}/sessions",
+            f"/journey/links/{link_id}/sessions",
             params=dict(params) if params else None,
         )
 
     def list_events(
         self,
-        short_code: str,
+        link_id: str,
         params: Optional["ListJourneyEventsParams"] = None,
     ) -> "PaginatedResponse":
         """List journey events for a specific link.
 
         Args:
-            short_code: The link's short code.
+            link_id: The link's UUID.
             params: Pagination, event type filter, and period options.
         """
         return self._client.get(
-            f"/journey/links/{short_code}/events",
+            f"/journey/links/{link_id}/events",
             params=dict(params) if params else None,
         )

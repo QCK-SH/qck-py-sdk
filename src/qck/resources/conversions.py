@@ -12,7 +12,7 @@ Example::
 
     # Track a purchase conversion
     client.conversions.track({
-        "short_code": "abc123",
+        "link_id": "abc123",
         "visitor_id": "vis_xyz",
         "session_id": "sess_456",
         "name": "purchase",
@@ -65,9 +65,9 @@ class ConversionsResource:
         Use this from server-side code, mobile apps, or any HTTP client.
         """
         event = {
-            "short_code": params["short_code"],
+            "link_id": params["link_id"],
             "visitor_id": params["visitor_id"],
-            "session_id": params["session_id"],
+            "session_id": params.get("session_id", ""),
             "event_type": "conversion",
             "event_name": params["name"],
             "page_url": params.get("page_url", ""),
@@ -131,9 +131,9 @@ class ConversionsResource:
         """Get conversions broken down by a dimension.
 
         Args:
-            params: Must include a ``dimension`` (``"source"``,
-                ``"device"``, ``"country"``, ``"link"``, or
-                ``"name"``). Optional period and scope filters.
+            params: Must include a ``dimension`` (``"device"``,
+                ``"country"``, ``"link"``, or ``"name"``).
+                Optional period and scope filters.
 
         Returns:
             List of breakdown entries sorted by conversions descending.

@@ -35,7 +35,7 @@ client.close()
 with QCK(api_key="qck_your_api_key") as client:
     links = client.links.list({"page": 1, "limit": 10})
     for link in links["data"]:
-        print(f"{link['short_code']} → {link['original_url']}")
+        print(f"{link['id']} → {link['original_url']}")
 ```
 
 ## Configuration
@@ -207,7 +207,7 @@ Track and analyze conversion events tied to your links.
 ```python
 # Track a conversion
 client.conversions.track({
-    "short_code": "abc123",            # required — link short code
+    "link_id": "your-link-uuid",            # required — link short code
     "visitor_id": "user-456",          # required — your user ID
     "name": "purchase",                # required — conversion name
     "session_id": "sess-789",          # optional
@@ -220,7 +220,7 @@ client.conversions.track({
 # Conversion summary (org-wide or scoped)
 summary = client.conversions.summary({
     "period": "30d",
-    "short_code": "abc123",            # optional — scope to a link
+    "link_id": "your-link-uuid",            # optional — scope to a link
 })
 
 # Conversion timeseries
@@ -245,7 +245,7 @@ ttc = client.conversions.time_to_convert({"period": "30d"})
 
 ### Journey Tracking
 
-Track visitor journeys from any platform — websites, mobile apps, server-side. After a user clicks your QCK short link, they're redirected with `?qck_id=<short_code>` in the URL.
+Track visitor journeys from any platform — websites, mobile apps, server-side. After a user clicks your QCK short link, they're redirected with `?qck_link=<uuid>` in the URL.
 
 **Event types** (Enum — must be one of these):
 
@@ -262,7 +262,7 @@ Track visitor journeys from any platform — websites, mobile apps, server-side.
 client.journey.ingest({"events": [
     # Page view
     {
-        "short_code": "abc123",
+        "link_id": "your-link-uuid",
         "visitor_id": "user-456",
         "session_id": "sess-789",       # optional
         "event_type": "page_view",
@@ -271,7 +271,7 @@ client.journey.ingest({"events": [
     },
     # Scroll depth
     {
-        "short_code": "abc123",
+        "link_id": "your-link-uuid",
         "visitor_id": "user-456",
         "event_type": "scroll_depth",
         "page_url": "/pricing",
@@ -279,7 +279,7 @@ client.journey.ingest({"events": [
     },
     # Custom event with properties
     {
-        "short_code": "abc123",
+        "link_id": "your-link-uuid",
         "visitor_id": "user-456",
         "event_type": "custom",
         "event_name": "cta_click",
@@ -288,7 +288,7 @@ client.journey.ingest({"events": [
     },
     # Conversion with revenue
     {
-        "short_code": "abc123",
+        "link_id": "your-link-uuid",
         "visitor_id": "user-456",
         "event_type": "conversion",
         "conversion_name": "purchase",
@@ -300,7 +300,7 @@ client.journey.ingest({"events": [
 
 # Context fields (all optional — your data)
 client.journey.ingest({"events": [{
-    "short_code": "abc123",
+    "link_id": "your-link-uuid",
     "visitor_id": "user-456",
     "event_type": "page_view",
     "page_url": "/home",
@@ -312,19 +312,19 @@ client.journey.ingest({"events": [{
 }]})
 
 # Journey summary
-summary = client.journey.get_summary("abc123", {"period": "30d"})
+summary = client.journey.get_summary("link-uuid", {"period": "30d"})
 
 # Funnel analysis
-funnel = client.journey.get_funnel("abc123", {
+funnel = client.journey.get_funnel("link-uuid", {
     "steps": ["page_view", "cta_click", "purchase"],
     "period": "30d",
 })
 
 # List sessions
-sessions = client.journey.list_sessions("abc123", {"period": "7d", "limit": 10})
+sessions = client.journey.list_sessions("link-uuid", {"period": "7d", "limit": 10})
 
 # List events
-events = client.journey.list_events("abc123", {"event_type": "custom", "period": "7d"})
+events = client.journey.list_events("link-uuid", {"event_type": "custom", "period": "7d"})
 ```
 
 **cURL example:**
@@ -333,7 +333,7 @@ events = client.journey.list_events("abc123", {"event_type": "custom", "period":
 curl -X POST https://qck.sh/public-api/v1/journey/events \
   -H "X-API-Key: qck_your_api_key_here" \
   -H "Content-Type: application/json" \
-  -d '{"events":[{"short_code":"abc123","visitor_id":"user-456","event_type":"page_view","page_url":"/pricing"}]}'
+  -d '{"events":[{"link_id":"abc123","visitor_id":"user-456","event_type":"page_view","page_url":"/pricing"}]}'
 ```
 
 #### Journey API Reference
@@ -341,10 +341,10 @@ curl -X POST https://qck.sh/public-api/v1/journey/events \
 | Method | Parameters | Returns | Description |
 |--------|-----------|---------|-------------|
 | `ingest(params)` | `IngestEventsParams` | `None` | Batch ingest journey events (1-100) |
-| `get_summary(short_code, params?)` | `str, JourneyQueryParams` | `JourneyLinkSummary` | Link journey summary |
-| `get_funnel(short_code, params)` | `str, FunnelParams` | `FunnelResult` | Funnel analysis |
-| `list_sessions(short_code, params?)` | `str, ListJourneySessionsParams` | `PaginatedResponse` | List visitor sessions |
-| `list_events(short_code, params?)` | `str, ListJourneyEventsParams` | `PaginatedResponse` | List journey events |
+| `get_summary(link_id, params?)` | `str, JourneyQueryParams` | `JourneyLinkSummary` | Link journey summary |
+| `get_funnel(link_id, params)` | `str, FunnelParams` | `FunnelResult` | Funnel analysis |
+| `list_sessions(link_id, params?)` | `str, ListJourneySessionsParams` | `PaginatedResponse` | List visitor sessions |
+| `list_events(link_id, params?)` | `str, ListJourneyEventsParams` | `PaginatedResponse` | List journey events |
 
 ### Webhooks
 
@@ -438,7 +438,7 @@ WEBHOOK_EVENT_CATEGORIES["billing"]  # all billing events
 List custom domains configured for your organization.
 
 ```python
-domains = client.domains.list("org_id")
+domains = client.domains.list()
 for domain in domains:
     print(f"{domain['domain']} (verified: {domain['is_verified']}, default: {domain['is_default']})")
 ```
@@ -447,7 +447,7 @@ for domain in domains:
 
 | Method | Parameters | Returns | Description |
 |--------|-----------|---------|-------------|
-| `list(organization_id)` | `str` | `list[Domain]` | List organization domains |
+| `list()` | — | `list[Domain]` | List organization domains |
 
 ## Error Handling
 
