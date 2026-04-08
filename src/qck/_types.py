@@ -175,10 +175,10 @@ class CreateLinkParams(TypedDict, total=False):
 class UpdateLinkParams(TypedDict, total=False):
     """Parameters for updating an existing short link.
 
-    Only include the fields you want to change.
+    Only include the fields you want to change. Destination URL cannot
+    be changed — create a new link instead.
 
     Attributes:
-        url: New destination URL.
         custom_alias: New custom short code.
         title: New title.
         description: New description.
@@ -190,7 +190,6 @@ class UpdateLinkParams(TypedDict, total=False):
         password: New password (only when enabling protection).
     """
 
-    url: str
     custom_alias: str
     title: str
     description: str
