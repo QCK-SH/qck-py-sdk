@@ -4,34 +4,34 @@ Provides the :class:`AnalyticsResource` class for retrieving click
 analytics data including summaries, timeseries, geographic breakdowns,
 device/browser stats, referrer sources, and hourly distributions.
 
+Every analytics endpoint returns ``{"analytics": ..., "usage": {...}}``:
+the endpoint-specific payload plus tier usage metadata (monthly click
+counts, limits, retention, and any over-limit cutoff date).
+
 Example::
 
     from qck import QCK
 
     client = QCK(api_key="qck_...")
-    summary = client.analytics.summary({"days": 30})
-    print(f"Total clicks: {summary['total_clicks']}")
+    result = client.analytics.summary({"days": 30})
+    print(f"Total clicks: {result['analytics']['total_clicks']}")
+    print(f"Usage: {result['usage']['clicks_this_month']}")
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from .._client import HttpClient
     from .._types import (
-        AnalyticsSummary,
+        AnalyticsResult,
         AnalyticsSummaryParams,
-        DeviceAnalyticsEntry,
         DeviceAnalyticsParams,
-        GeoAnalyticsEntry,
         GeoAnalyticsParams,
-        HourlyAnalyticsEntry,
         HourlyAnalyticsParams,
-        ReferrerAnalyticsEntry,
         ReferrerAnalyticsParams,
         TimeseriesParams,
-        TimeseriesPoint,
     )
 
 
@@ -40,7 +40,9 @@ class AnalyticsResource:
 
     Access via ``client.analytics``. Provides read-only access to
     click analytics data aggregated across all links or filtered by
-    domain.
+    domain. Every method returns an :class:`~qck.AnalyticsResult`
+    dict with ``analytics`` (the payload) and ``usage`` (tier usage
+    metadata) keys.
 
     Attributes:
         _client: The underlying HTTP client used for API calls.
@@ -54,29 +56,31 @@ class AnalyticsResource:
         """
         self._client = client
 
-    def summary(self, params: Optional["AnalyticsSummaryParams"] = None) -> "AnalyticsSummary":
+    def summary(self, params: Optional["AnalyticsSummaryParams"] = None) -> "AnalyticsResult":
         """Get an aggregated analytics summary.
 
         Returns high-level metrics such as total clicks, unique
-        visitors, and active links for the given time period.
+        visitors, active links, and this month's link/click counts
+        for the given time period.
 
         Args:
             params: Date range and filter options. Pass ``None`` to
                 use the API default period.
 
         Returns:
-            An analytics summary with aggregate metrics.
+            ``{"analytics": AnalyticsSummary, "usage": AnalyticsUsage}``.
 
         Example:
-            >>> summary = client.analytics.summary({"days": 7})
-            >>> print(summary["total_clicks"])
+            >>> result = client.analytics.summary({"days": 7})
+            >>> print(result["analytics"]["total_clicks"])
+            >>> print(result["usage"]["limit_exceeded"])
         """
         return self._client.get("/analytics/summary", params=dict(params) if params else None)
 
-    def timeseries(self, params: Optional["TimeseriesParams"] = None) -> List["TimeseriesPoint"]:
+    def timeseries(self, params: Optional["TimeseriesParams"] = None) -> "AnalyticsResult":
         """Get click timeseries data.
 
-        Returns a list of time-bucketed data points with click counts
+        Returns a list of date-bucketed data points with click counts
         and unique visitor counts, suitable for charting.
 
         Args:
@@ -84,16 +88,18 @@ class AnalyticsResource:
                 use the API default period.
 
         Returns:
-            List of timeseries data points ordered chronologically.
+            ``{"analytics": list[TimeseriesPoint], "usage": AnalyticsUsage}``.
+            Points are ordered chronologically; each has ``date``
+            (``YYYY-MM-DD``), ``clicks``, and ``unique_visitors``.
 
         Example:
-            >>> points = client.analytics.timeseries({"days": 30})
-            >>> for p in points:
-            ...     print(p["timestamp"], p["clicks"])
+            >>> result = client.analytics.timeseries({"days": 30})
+            >>> for p in result["analytics"]:
+            ...     print(p["date"], p["clicks"])
         """
         return self._client.get("/analytics/timeseries", params=dict(params) if params else None)
 
-    def geo(self, params: Optional["GeoAnalyticsParams"] = None) -> List["GeoAnalyticsEntry"]:
+    def geo(self, params: Optional["GeoAnalyticsParams"] = None) -> "AnalyticsResult":
         """Get geographic analytics (clicks by country).
 
         Args:
@@ -101,17 +107,19 @@ class AnalyticsResource:
                 use the API default period.
 
         Returns:
-            List of entries with country, click count, and unique
-            visitor count, sorted by clicks descending.
+            ``{"analytics": list[GeoAnalyticsEntry], "usage": AnalyticsUsage}``.
+            Entries have ``country_code`` (ISO 3166-1 alpha-2),
+            ``clicks``, and ``unique_visitors``, sorted by clicks
+            descending.
 
         Example:
-            >>> countries = client.analytics.geo({"days": 30})
-            >>> for c in countries:
-            ...     print(c["country"], c["clicks"])
+            >>> result = client.analytics.geo({"days": 30})
+            >>> for c in result["analytics"]:
+            ...     print(c["country_code"], c["clicks"])
         """
         return self._client.get("/analytics/geo", params=dict(params) if params else None)
 
-    def devices(self, params: Optional["DeviceAnalyticsParams"] = None) -> List["DeviceAnalyticsEntry"]:
+    def devices(self, params: Optional["DeviceAnalyticsParams"] = None) -> "AnalyticsResult":
         """Get device and browser analytics.
 
         Args:
@@ -119,17 +127,18 @@ class AnalyticsResource:
                 use the API default period.
 
         Returns:
-            List of entries with device type, browser, OS, and click
-            count, sorted by clicks descending.
+            ``{"analytics": list[DeviceAnalyticsEntry], "usage": AnalyticsUsage}``.
+            Entries have ``device_type``, ``browser``, ``os``, and
+            ``clicks``, sorted by clicks descending.
 
         Example:
-            >>> devices = client.analytics.devices({"days": 30})
-            >>> for d in devices:
+            >>> result = client.analytics.devices({"days": 30})
+            >>> for d in result["analytics"]:
             ...     print(d["browser"], d["clicks"])
         """
         return self._client.get("/analytics/devices", params=dict(params) if params else None)
 
-    def referrers(self, params: Optional["ReferrerAnalyticsParams"] = None) -> List["ReferrerAnalyticsEntry"]:
+    def referrers(self, params: Optional["ReferrerAnalyticsParams"] = None) -> "AnalyticsResult":
         """Get referrer analytics (clicks by traffic source).
 
         Args:
@@ -137,17 +146,18 @@ class AnalyticsResource:
                 use the API default period.
 
         Returns:
-            List of entries with referrer domain, click count, and
-            unique visitor count, sorted by clicks descending.
+            ``{"analytics": list[ReferrerAnalyticsEntry], "usage": AnalyticsUsage}``.
+            Entries have ``referrer``, ``clicks``, and
+            ``unique_visitors``, sorted by clicks descending.
 
         Example:
-            >>> refs = client.analytics.referrers({"days": 7})
-            >>> for r in refs:
+            >>> result = client.analytics.referrers({"days": 7})
+            >>> for r in result["analytics"]:
             ...     print(r["referrer"], r["clicks"])
         """
         return self._client.get("/analytics/referrers", params=dict(params) if params else None)
 
-    def hourly(self, params: Optional["HourlyAnalyticsParams"] = None) -> List["HourlyAnalyticsEntry"]:
+    def hourly(self, params: Optional["HourlyAnalyticsParams"] = None) -> "AnalyticsResult":
         """Get hourly analytics (click distribution by hour of day).
 
         Returns 24 entries (one per UTC hour) showing the aggregate
@@ -158,12 +168,13 @@ class AnalyticsResource:
                 use the API default period.
 
         Returns:
-            List of 24 entries (hours 0-23) with click and unique
-            visitor counts.
+            ``{"analytics": list[HourlyAnalyticsEntry], "usage": AnalyticsUsage}``.
+            24 entries (hours 0-23) with click and unique visitor
+            counts.
 
         Example:
-            >>> hourly = client.analytics.hourly({"days": 30})
-            >>> peak = max(hourly, key=lambda h: h["clicks"])
+            >>> result = client.analytics.hourly({"days": 30})
+            >>> peak = max(result["analytics"], key=lambda h: h["clicks"])
             >>> print(f"Peak hour: {peak['hour']}:00 UTC")
         """
         return self._client.get("/analytics/hourly", params=dict(params) if params else None)

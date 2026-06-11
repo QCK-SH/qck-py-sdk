@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 if TYPE_CHECKING:
     from .._client import HttpClient
     from .._types import (
+        BulkCreateResult,
         CreateLinkParams,
         Link,
         LinkStats,
@@ -84,13 +85,15 @@ class LinksResource:
                 to retrieve the first page with default settings.
 
         Returns:
-            A paginated response containing a list of links and
-            pagination metadata.
+            ``{"data": [...], "page": int, "per_page": int,
+            "total": int, "total_pages": int}`` — the link list plus
+            pagination metadata (carried in the API envelope's ``meta``).
 
         Example:
             >>> page = client.links.list({"page": 1, "per_page": 10})
             >>> for link in page["data"]:
             ...     print(link["short_url"])
+            >>> print(page["total"], page["total_pages"])
         """
         return self._client.get("/links", params=dict(params) if params else None)
 
@@ -151,26 +154,40 @@ class LinksResource:
         """
         self._client.delete(f"/links/{link_id}")
 
-    def bulk_create(self, links: List["CreateLinkParams"]) -> List["Link"]:
+    def bulk_create(self, links: List["CreateLinkParams"]) -> "BulkCreateResult":
         """Create multiple links in a single request.
 
         The maximum batch size depends on your subscription tier.
+
+        Bulk creation supports **partial success**: some links may be
+        created while others fail. The API responds with HTTP 207
+        (partial) or 422 (all failed) in those cases, and the SDK still
+        returns the result instead of raising — always inspect
+        ``failed`` / ``failure_count`` after calling.
 
         Args:
             links: List of link creation parameter objects.
 
         Returns:
-            List of newly created link objects.
+            A bulk creation result with ``created`` (each entry has
+            ``index`` and ``link``), ``failed`` (each entry has
+            ``index``, ``url``, ``error``, ``error_type``),
+            ``total_requested``, ``success_count``, and
+            ``failure_count``.
 
         Raises:
-            ValidationError: If any link params fail validation or
-                the batch exceeds your tier's bulk import limit.
+            ValidationError: If the batch is empty or exceeds your
+                tier's bulk import limit.
 
         Example:
-            >>> links = client.links.bulk_create([
+            >>> result = client.links.bulk_create([
             ...     {"url": "https://example.com/a"},
             ...     {"url": "https://example.com/b"},
             ... ])
+            >>> for item in result["created"]:
+            ...     print(item["link"]["short_url"])
+            >>> for failure in result["failed"]:
+            ...     print(failure["url"], failure["error"])
         """
         return self._client.post("/links/bulk", [dict(l) for l in links])
 

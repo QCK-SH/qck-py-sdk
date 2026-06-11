@@ -6,11 +6,33 @@ build-backend = "hatchling.build"
 name = "qck-sdk"
 version = "0.1.0"
 description = "Official Python SDK for the QCK API"
+readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["qck", "url-shortener", "short-links", "analytics", "links", "api", "sdk"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
 dependencies = [
     "httpx>=0.24.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/QCK-SH/qck-py-sdk"
+Repository = "https://github.com/QCK-SH/qck-py-sdk"
+Documentation = "https://qck.sh/docs"
 
 [project.optional-dependencies]
 dev = [

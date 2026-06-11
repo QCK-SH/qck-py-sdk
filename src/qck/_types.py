@@ -29,37 +29,67 @@ class ErrorDetail(TypedDict, total=False):
     message: str
 
 
+class ResponseMeta(TypedDict, total=False):
+    """Metadata block included in every API response envelope.
+
+    Attributes:
+        request_id: Unique request identifier for tracing.
+        timestamp: ISO-8601 response timestamp.
+        status: HTTP status code (present on some responses).
+        page: Pagination — current page (list endpoints only).
+        per_page: Pagination — items per page (list endpoints only).
+        total: Pagination — total items (list endpoints only).
+        total_pages: Pagination — total pages (list endpoints only).
+    """
+
+    request_id: str
+    timestamp: str
+    status: int
+    page: int
+    per_page: int
+    total: int
+    total_pages: int
+
+
 class ApiResponse(TypedDict, total=False):
     """Standard API response envelope.
 
     All QCK API endpoints return this shape. The SDK unwraps it
-    automatically, so callers receive the ``data`` field directly.
+    automatically, so callers receive the ``data`` field directly
+    (plus pagination from ``meta`` for list endpoints).
 
     Attributes:
         success: Whether the request succeeded.
         data: Response payload (type varies by endpoint).
         error: Present only when ``success`` is ``False``.
+        meta: Request metadata and pagination.
     """
 
     success: bool
     data: Any
     error: ErrorDetail
+    meta: ResponseMeta
 
 
 class PaginatedResponse(TypedDict):
     """Paginated list response returned by endpoints that support paging.
 
+    The backend carries pagination in the response envelope's ``meta``
+    block; the SDK merges it with the data array into this shape.
+
     Attributes:
         data: List of items for the current page.
-        total: Total number of items across all pages.
         page: Current page number (1-based).
-        limit: Maximum items per page.
+        per_page: Maximum items per page.
+        total: Total number of items across all pages.
+        total_pages: Total number of pages.
     """
 
     data: List[Any]
-    total: int
     page: int
-    limit: int
+    per_page: int
+    total: int
+    total_pages: int
 
 
 # --------------------------------------------------------------------------
@@ -90,13 +120,13 @@ class Link(TypedDict, total=False):
     """A short link returned by the API.
 
     Attributes:
-        id: Unique link identifier.
-        link_id: The generated or custom alias (e.g. ``"abc123"``).
+        id: Unique link identifier (UUID).
+        short_code: The generated or custom short code (e.g. ``"abc123"``).
         original_url: The destination URL the short link redirects to.
         short_url: Fully qualified short URL (e.g. ``"https://qck.sh/abc123"``).
         title: User-supplied or scraped page title.
         description: User-supplied or scraped meta description.
-        expires_at: ISO-8601 expiration timestamp, or absent if none.
+        expires_at: ISO-8601 expiration timestamp, or ``None`` if none.
         created_at: ISO-8601 creation timestamp.
         updated_at: ISO-8601 last-modified timestamp.
         is_active: Whether the link is currently active and redirecting.
@@ -107,17 +137,25 @@ class Link(TypedDict, total=False):
         unique_visitors: Lifetime unique visitor count.
         bot_clicks: Lifetime bot/crawler click count.
         last_accessed_at: ISO-8601 timestamp of the most recent click.
-        domain_id: ID of the custom domain this link uses.
+        domain_id: ID of the custom domain this link uses (``None`` =
+            default platform domain).
         domain_name: Custom domain name (e.g. ``"links.example.com"``).
+        campaign_id: UUID of the campaign this link belongs to.
+        campaign_name: Name of the campaign this link belongs to.
+        utm_source: UTM source parameter stored on the link.
+        utm_medium: UTM medium parameter stored on the link.
+        utm_campaign: UTM campaign parameter stored on the link.
+        utm_term: UTM term parameter stored on the link.
+        utm_content: UTM content parameter stored on the link.
     """
 
     id: str
-    link_id: str
+    short_code: str
     original_url: str
     short_url: str
-    title: str
-    description: str
-    expires_at: str
+    title: Optional[str]
+    description: Optional[str]
+    expires_at: Optional[str]
     created_at: str
     updated_at: str
     is_active: bool
@@ -127,9 +165,16 @@ class Link(TypedDict, total=False):
     total_clicks: int
     unique_visitors: int
     bot_clicks: int
-    last_accessed_at: str
-    domain_id: str
-    domain_name: str
+    last_accessed_at: Optional[str]
+    domain_id: Optional[str]
+    domain_name: Optional[str]
+    campaign_id: Optional[str]
+    campaign_name: Optional[str]
+    utm_source: Optional[str]
+    utm_medium: Optional[str]
+    utm_campaign: Optional[str]
+    utm_term: Optional[str]
+    utm_content: Optional[str]
 
 
 class CreateLinkParams(TypedDict, total=False):
@@ -246,6 +291,58 @@ class BulkCreateParams(TypedDict):
     links: List[CreateLinkParams]
 
 
+class BulkLinkSuccess(TypedDict):
+    """A successfully created link in a bulk creation result.
+
+    Attributes:
+        index: Index of the link in the original request array.
+        link: The created link object.
+    """
+
+    index: int
+    link: Link
+
+
+class BulkLinkError(TypedDict):
+    """A failed link in a bulk creation result.
+
+    Attributes:
+        index: Index of the failed link in the original request array.
+        url: The URL that failed (for reference).
+        error: Error message explaining why the link failed.
+        error_type: Error category (e.g. ``"validation"``,
+            ``"security"``, ``"duplicate"``).
+    """
+
+    index: int
+    url: str
+    error: str
+    error_type: str
+
+
+class BulkCreateResult(TypedDict):
+    """Result of a bulk link creation operation.
+
+    Bulk creation supports partial success: some links may succeed
+    while others fail. On partial (HTTP 207) or complete (HTTP 422)
+    failure the SDK still returns this result instead of raising, so
+    inspect ``failed`` after every call.
+
+    Attributes:
+        created: Successfully created links with their original indices.
+        failed: Links that failed to create, with error details.
+        total_requested: Total number of links in the request.
+        success_count: Number of links successfully created.
+        failure_count: Number of links that failed.
+    """
+
+    created: List[BulkLinkSuccess]
+    failed: List[BulkLinkError]
+    total_requested: int
+    success_count: int
+    failure_count: int
+
+
 class LinkStats(TypedDict):
     """Click statistics for a single link.
 
@@ -318,6 +415,9 @@ class AnalyticsSummary(TypedDict):
         yesterday_clicks: Click count for yesterday.
         active_links: Number of currently active links.
         total_links_count: Total number of links in the account.
+        links_this_month: Links created this calendar month
+            (quota-counted).
+        clicks_this_month: Tracked clicks this calendar month.
     """
 
     total_clicks: int
@@ -328,6 +428,47 @@ class AnalyticsSummary(TypedDict):
     yesterday_clicks: int
     active_links: int
     total_links_count: int
+    links_this_month: int
+    clicks_this_month: int
+
+
+class AnalyticsUsage(TypedDict, total=False):
+    """Usage metadata included in every analytics response.
+
+    Attributes:
+        clicks_this_month: Tracked clicks this calendar month.
+        click_limit: Monthly tracked-click limit for the tier, or
+            ``None`` for unlimited.
+        limit_exceeded: Whether the monthly click limit was exceeded.
+        tier: Subscription tier name.
+        retention_days: Data retention window in days (0 = unlimited).
+        cutoff_date: If over limit, the earliest date (``YYYY-MM-DD``)
+            analytics queries are clamped to. Absent when not over limit.
+    """
+
+    clicks_this_month: int
+    click_limit: Optional[int]
+    limit_exceeded: bool
+    tier: str
+    retention_days: int
+    cutoff_date: str
+
+
+class AnalyticsResult(TypedDict):
+    """Envelope returned by every analytics method.
+
+    The backend wraps each analytics payload together with usage
+    metadata: ``{"analytics": ..., "usage": {...}}``.
+
+    Attributes:
+        analytics: The endpoint-specific analytics payload (e.g.
+            :class:`AnalyticsSummary` for ``summary()``, a list of
+            :class:`TimeseriesPoint` for ``timeseries()``).
+        usage: Tier usage metadata (limits, retention, cutoff).
+    """
+
+    analytics: Any
+    usage: AnalyticsUsage
 
 
 class TimeseriesParams(TypedDict, total=False):
@@ -352,12 +493,12 @@ class TimeseriesPoint(TypedDict):
     """A single data point in a click timeseries.
 
     Attributes:
-        timestamp: ISO-8601 timestamp for this bucket.
+        date: Date string (``YYYY-MM-DD``) for this bucket.
         clicks: Total clicks in the bucket.
         unique_visitors: Unique visitors in the bucket.
     """
 
-    timestamp: str
+    date: str
     clicks: int
     unique_visitors: int
 
@@ -384,13 +525,11 @@ class GeoAnalyticsEntry(TypedDict):
     """A single row in geographic analytics results.
 
     Attributes:
-        country: Full country name (e.g. ``"United States"``).
         country_code: ISO 3166-1 alpha-2 code (e.g. ``"US"``).
         clicks: Total clicks from this country.
         unique_visitors: Unique visitors from this country.
     """
 
-    country: str
     country_code: str
     clicks: int
     unique_visitors: int
@@ -498,22 +637,56 @@ class HourlyAnalyticsEntry(TypedDict):
 # Domains
 # --------------------------------------------------------------------------
 
+DomainStatus = Literal[
+    "pending",
+    "provisioning",
+    "provisioning_failed",
+    "active",
+    "rejected",
+    "suspended",
+]
+
+
 class Domain(TypedDict, total=False):
     """A custom domain registered with the organisation.
 
+    Note:
+        The backend serialises domain objects in **camelCase**
+        (e.g. ``verificationToken``, ``dnsVerifiedAt``).
+
     Attributes:
-        id: Unique domain identifier.
+        id: Unique domain identifier (UUID).
+        organizationId: UUID of the owning organisation.
         domain: The domain name (e.g. ``"links.example.com"``).
-        is_verified: Whether DNS verification has been completed.
-        is_default: Whether this is the organisation's default domain.
-        created_at: ISO-8601 creation timestamp.
+        status: Domain lifecycle status: ``pending``, ``provisioning``,
+            ``provisioning_failed``, ``active``, ``rejected``, or
+            ``suspended``.
+        verificationToken: Token to publish in DNS for verification.
+        dnsVerifiedAt: ISO-8601 timestamp when DNS verification
+            succeeded, or ``None``.
+        rejectionReason: Reason the domain was rejected, or ``None``.
+        createdAt: ISO-8601 creation timestamp.
+        updatedAt: ISO-8601 last-modified timestamp.
+        sslExpiryAt: ISO-8601 SSL certificate expiry timestamp, or
+            ``None``.
+        healthStatus: Health monitoring status, or ``None``.
+        sslStatus: SSL provisioning status, or ``None``.
+        provisioningError: Provisioning error detail, or ``None``.
     """
 
     id: str
+    organizationId: str
     domain: str
-    is_verified: bool
-    is_default: bool
-    created_at: str
+    status: DomainStatus
+    verificationToken: str
+    dnsVerifiedAt: Optional[str]
+    rejectionReason: Optional[str]
+    createdAt: str
+    updatedAt: str
+    sslExpiryAt: Optional[str]
+    healthStatus: Optional[str]
+    sslStatus: Optional[str]
+    provisioningError: Optional[str]
 
 
 # --------------------------------------------------------------------------
@@ -674,47 +847,69 @@ class UpdateWebhookParams(TypedDict, total=False):
     is_active: bool
 
 
+WebhookDeliveryStatus = Literal["pending", "delivered", "failed", "retrying"]
+
+
 class WebhookDelivery(TypedDict, total=False):
     """Record of a single webhook delivery attempt.
 
     Attributes:
         id: Unique delivery identifier.
+        endpoint_id: UUID of the webhook endpoint.
         event_type: The event type that was delivered (e.g.
             ``"link.created"``).
-        status: Delivery status (e.g. ``"success"``, ``"failed"``).
-        http_status: HTTP response status code from the endpoint.
+        payload: The JSON payload that was sent.
+        status: Delivery status: ``pending``, ``delivered``,
+            ``failed``, or ``retrying``.
         attempt_number: Which attempt this was (1-based).
+        max_attempts: Maximum number of attempts before giving up.
+        http_status: HTTP response status code from the endpoint,
+            or ``None`` if no response was received.
+        response_body: Response body from the endpoint, or ``None``.
+        error_message: Delivery error detail, or ``None``.
+        next_retry_at: ISO-8601 timestamp of the next retry, or
+            ``None``.
+        delivered_at: ISO-8601 timestamp when delivery completed,
+            or ``None``.
         created_at: ISO-8601 timestamp when the delivery was queued.
-        delivered_at: ISO-8601 timestamp when delivery completed.
     """
 
     id: str
+    endpoint_id: str
     event_type: str
-    status: str
-    http_status: int
+    payload: Dict[str, Any]
+    status: WebhookDeliveryStatus
     attempt_number: int
+    max_attempts: int
+    http_status: Optional[int]
+    response_body: Optional[str]
+    error_message: Optional[str]
+    next_retry_at: Optional[str]
+    delivered_at: Optional[str]
     created_at: str
-    delivered_at: str
-
-
-class ListWebhookDeliveriesParams(TypedDict, total=False):
-    """Pagination parameters for listing webhook deliveries.
-
-    Attributes:
-        page: Page number (1-based).
-        limit: Maximum items per page.
-    """
-
-    page: int
-    limit: int
 
 
 # --------------------------------------------------------------------------
 # Journey
 # --------------------------------------------------------------------------
 
-class JourneyEvent(TypedDict, total=False):
+class _JourneyEventRequired(TypedDict):
+    """Required fields for a journey event.
+
+    The backend rejects events missing any of these fields.
+    """
+
+    link_id: str
+    visitor_id: str
+    event_type: Literal["page_view", "scroll_depth", "time_on_page", "custom", "conversion"]
+    page_url: str
+
+
+class JourneyEvent(_JourneyEventRequired, total=False):
     """A single visitor journey event to ingest.
+
+    Required: ``link_id``, ``visitor_id``, ``event_type``, ``page_url``.
+    All other fields are optional.
 
     Attributes:
         link_id: UUID of the QCK link. Read from ``?qck_link=`` URL param.
@@ -723,6 +918,7 @@ class JourneyEvent(TypedDict, total=False):
         event_type: Type of event.
         event_name: Event name for custom/conversion events.
         page_url: Page URL (web) or screen/route name (mobile/server).
+            Required by the backend.
         page_title: Page or screen title.
         scroll_percent: Scroll depth percentage (0-100).
         time_on_page: Time spent on the page in seconds.
@@ -741,12 +937,8 @@ class JourneyEvent(TypedDict, total=False):
         properties: Arbitrary properties (stored in ClickHouse JSON column).
     """
 
-    link_id: str
-    visitor_id: str
     session_id: str
-    event_type: Literal["page_view", "scroll_depth", "time_on_page", "custom", "conversion"]
     event_name: str
-    page_url: str
     page_title: str
     scroll_percent: int
     time_on_page: int
@@ -918,6 +1110,38 @@ class SessionSummary(TypedDict, total=False):
     event_count: int
     pages_visited: List[str]
     events: List[SessionEvent]
+
+
+class JourneySessionsPage(TypedDict):
+    """Paginated visitor sessions returned by ``journey.list_sessions``.
+
+    Attributes:
+        sessions: Visitor sessions for the current page.
+        total: Total number of sessions across all pages.
+        page: Current page number (1-based).
+        limit: Maximum items per page.
+    """
+
+    sessions: List[SessionSummary]
+    total: int
+    page: int
+    limit: int
+
+
+class JourneyEventsPage(TypedDict):
+    """Paginated journey events returned by ``journey.list_events``.
+
+    Attributes:
+        events: Journey events for the current page.
+        total: Total number of events across all pages.
+        page: Current page number (1-based).
+        limit: Maximum items per page.
+    """
+
+    events: List[Dict[str, Any]]
+    total: int
+    page: int
+    limit: int
 
 
 class ListJourneySessionsParams(TypedDict, total=False):

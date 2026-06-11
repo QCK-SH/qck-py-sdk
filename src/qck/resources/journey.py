@@ -35,11 +35,12 @@ if TYPE_CHECKING:
         FunnelParams,
         FunnelResult,
         IngestEventsParams,
+        JourneyEventsPage,
         JourneyLinkSummary,
         JourneyQueryParams,
+        JourneySessionsPage,
         ListJourneyEventsParams,
         ListJourneySessionsParams,
-        PaginatedResponse,
     )
 
 
@@ -130,12 +131,20 @@ class JourneyResource:
         self,
         link_id: str,
         params: Optional["ListJourneySessionsParams"] = None,
-    ) -> "PaginatedResponse":
+    ) -> "JourneySessionsPage":
         """List visitor sessions for a specific link.
 
         Args:
             link_id: The link's UUID.
             params: Pagination, visitor filter, and period options.
+
+        Returns:
+            ``{"sessions": [...], "total": int, "page": int, "limit": int}``.
+
+        Example:
+            >>> page = client.journey.list_sessions("link-uuid", {"limit": 10})
+            >>> for session in page["sessions"]:
+            ...     print(session["visitor_id"], session["event_count"])
         """
         return self._client.get(
             f"/journey/links/{link_id}/sessions",
@@ -146,12 +155,20 @@ class JourneyResource:
         self,
         link_id: str,
         params: Optional["ListJourneyEventsParams"] = None,
-    ) -> "PaginatedResponse":
+    ) -> "JourneyEventsPage":
         """List journey events for a specific link.
 
         Args:
             link_id: The link's UUID.
             params: Pagination, event type filter, and period options.
+
+        Returns:
+            ``{"events": [...], "total": int, "page": int, "limit": int}``.
+
+        Example:
+            >>> page = client.journey.list_events("link-uuid", {"event_type": "custom"})
+            >>> for event in page["events"]:
+            ...     print(event["event_type"], event["page_url"])
         """
         return self._client.get(
             f"/journey/links/{link_id}/events",

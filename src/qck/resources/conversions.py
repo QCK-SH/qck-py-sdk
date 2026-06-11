@@ -63,7 +63,19 @@ class ConversionsResource:
         """Track a conversion event.
 
         Use this from server-side code, mobile apps, or any HTTP client.
+        ``link_id`` is the link's **UUID** (read from the ``?qck_link=``
+        URL param after redirect), not its short code.
+
+        Each call sends a unique ``X-Idempotency-Key`` header so that
+        network-level retries cannot record the same conversion twice
+        (the backend deduplicates for 5 minutes).
+
+        Note:
+            Requires an API key with the ``journey:write`` permission
+            (conversions are ingested through the journey pipeline).
         """
+        import uuid
+
         event = {
             "link_id": params["link_id"],
             "visitor_id": params["visitor_id"],
@@ -77,7 +89,11 @@ class ConversionsResource:
             "properties": params.get("properties") or {},
         }
 
-        self._client.post("/journey/events", {"events": [event]})
+        self._client.post(
+            "/journey/events",
+            {"events": [event]},
+            headers={"X-Idempotency-Key": uuid.uuid4().hex},
+        )
 
     def summary(
         self, params: Optional["ConversionScopeParams"] = None

@@ -56,16 +56,21 @@ class AuthenticationError(QCKError):
 
     Attributes:
         status: Always ``401``.
-        code: Always ``"AUTHENTICATION_ERROR"``.
+        code: Error code from the API (e.g. ``"MISSING_API_KEY"``,
+            ``"INVALID_API_KEY"``).
     """
 
-    def __init__(self, message: str = "Authentication failed") -> None:
+    def __init__(
+        self, message: str = "Authentication failed", code: str = "AUTHENTICATION_ERROR"
+    ) -> None:
         """Initialise the authentication error.
 
         Args:
             message: Human-readable error description.
+            code: Machine-readable error code from the API (e.g.
+                ``"MISSING_API_KEY"``, ``"INVALID_API_KEY"``).
         """
-        super().__init__(message, 401, "AUTHENTICATION_ERROR")
+        super().__init__(message, 401, code)
 
 
 class RateLimitError(QCKError):
@@ -77,19 +82,25 @@ class RateLimitError(QCKError):
 
     Attributes:
         status: Always ``429``.
-        code: Always ``"RATE_LIMIT_ERROR"``.
+        code: Error code from the API (typically ``"RATE_LIMIT_EXCEEDED"``).
         retry_after: Seconds the server requests you wait before
             retrying (from the ``Retry-After`` response header).
     """
 
-    def __init__(self, message: str = "Rate limit exceeded", retry_after: int = 60) -> None:
+    def __init__(
+        self,
+        message: str = "Rate limit exceeded",
+        retry_after: int = 60,
+        code: str = "RATE_LIMIT_EXCEEDED",
+    ) -> None:
         """Initialise the rate-limit error.
 
         Args:
             message: Human-readable error description.
             retry_after: Seconds to wait before retrying. Defaults to 60.
+            code: Machine-readable error code from the API.
         """
-        super().__init__(message, 429, "RATE_LIMIT_ERROR")
+        super().__init__(message, 429, code)
         self.retry_after = retry_after
 
 
@@ -102,16 +113,17 @@ class NotFoundError(QCKError):
 
     Attributes:
         status: Always ``404``.
-        code: Always ``"NOT_FOUND"``.
+        code: Error code from the API (typically ``"NOT_FOUND"``).
     """
 
-    def __init__(self, message: str = "Resource not found") -> None:
+    def __init__(self, message: str = "Resource not found", code: str = "NOT_FOUND") -> None:
         """Initialise the not-found error.
 
         Args:
             message: Human-readable error description.
+            code: Machine-readable error code from the API.
         """
-        super().__init__(message, 404, "NOT_FOUND")
+        super().__init__(message, 404, code)
 
 
 class ValidationError(QCKError):
@@ -122,13 +134,14 @@ class ValidationError(QCKError):
 
     Attributes:
         status: Always ``400``.
-        code: Always ``"VALIDATION_ERROR"``.
+        code: Error code from the API (typically ``"VALIDATION_ERROR"``).
     """
 
-    def __init__(self, message: str = "Validation error") -> None:
+    def __init__(self, message: str = "Validation error", code: str = "VALIDATION_ERROR") -> None:
         """Initialise the validation error.
 
         Args:
             message: Human-readable error description.
+            code: Machine-readable error code from the API.
         """
-        super().__init__(message, 400, "VALIDATION_ERROR")
+        super().__init__(message, 400, code)

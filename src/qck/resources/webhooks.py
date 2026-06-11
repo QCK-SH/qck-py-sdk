@@ -23,15 +23,14 @@ Example::
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List
 
 if TYPE_CHECKING:
     from .._client import HttpClient
     from .._types import (
         CreateWebhookParams,
-        ListWebhookDeliveriesParams,
-        PaginatedResponse,
         UpdateWebhookParams,
+        WebhookDelivery,
         WebhookEndpoint,
     )
 
@@ -149,37 +148,28 @@ class WebhooksResource:
         """
         self._client.delete(f"/webhooks/{webhook_id}")
 
-    def list_deliveries(
-        self,
-        webhook_id: str,
-        params: Optional["ListWebhookDeliveriesParams"] = None,
-    ) -> "PaginatedResponse":
+    def list_deliveries(self, webhook_id: str) -> List["WebhookDelivery"]:
         """List delivery attempts for a webhook endpoint.
 
-        Useful for debugging failed deliveries and monitoring webhook
-        health.
+        Returns the 50 most recent delivery records (newest first).
+        The endpoint is not paginated. Useful for debugging failed
+        deliveries and monitoring webhook health.
 
         Args:
             webhook_id: The unique webhook endpoint identifier.
-            params: Pagination options. Pass ``None`` for defaults.
 
         Returns:
-            A paginated response containing delivery attempt records.
+            A list of up to 50 delivery attempt records.
 
         Raises:
             NotFoundError: If no webhook exists with the given ID.
 
         Example:
-            >>> deliveries = client.webhooks.list_deliveries(
-            ...     "wh_abc123", {"page": 1, "limit": 10}
-            ... )
-            >>> for d in deliveries["data"]:
-            ...     print(d["event_type"], d["status"])
+            >>> deliveries = client.webhooks.list_deliveries("wh_abc123")
+            >>> for d in deliveries:
+            ...     print(d["event_type"], d["status"], d["http_status"])
         """
-        return self._client.get(
-            f"/webhooks/{webhook_id}/deliveries",
-            params=dict(params) if params else None,
-        )
+        return self._client.get(f"/webhooks/{webhook_id}/deliveries")
 
     def test(self, webhook_id: str) -> None:
         """Send a test delivery to a webhook endpoint.

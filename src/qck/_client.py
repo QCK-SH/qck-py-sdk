@@ -9,7 +9,10 @@ transport layer used by every resource class in the SDK. It handles:
 * Mapping HTTP error responses to typed SDK exceptions
   (:class:`~qck._errors.ValidationError`, :class:`~qck._errors.AuthenticationError`,
   :class:`~qck._errors.NotFoundError`, :class:`~qck._errors.RateLimitError`).
-* Unwrapping the standard ``{"success": bool, "data": ...}`` API envelope.
+* Unwrapping the standard ``{"success", "data", "error", "meta"}`` API
+  envelope, including flat middleware errors
+  (``{"success": false, "error": "CODE", "message": "..."}``) and
+  pagination metadata carried in ``meta``.
 
 End users should not need to instantiate :class:`HttpClient` directly;
 the :class:`~qck.QCK` constructor creates one internally.
@@ -32,7 +35,7 @@ from ._errors import (
 
 T = TypeVar("T")
 
-_DEFAULT_BASE_URL = "https://api.qck.sh/public-api/v1"
+_DEFAULT_BASE_URL = "https://qck.sh/public-api/v1"
 _DEFAULT_TIMEOUT = 30
 _DEFAULT_RETRIES = 3
 _MAX_RETRY_DELAY = 120
@@ -257,9 +260,13 @@ class HttpClient:
     ) -> Any:
         """Execute an HTTP request with automatic retries.
 
-        Retries are triggered by :class:`~qck._errors.RateLimitError`,
-        ``httpx.TimeoutException``, and ``httpx.ConnectError``. The
-        delay between attempts is determined by :meth:`_retry_delay`.
+        Rate limits (:class:`~qck._errors.RateLimitError`, honouring
+        ``Retry-After``) are retried for every request. Network errors
+        (``httpx.TimeoutException``, ``httpx.ConnectError``) are retried
+        only for idempotent requests — ``GET`` requests, or requests
+        carrying an ``X-Idempotency-Key`` header. A timed-out plain
+        ``POST`` is *not* retried, because the server may already have
+        processed it.
 
         Args:
             method: HTTP method (``GET``, ``POST``, etc.).
@@ -279,6 +286,7 @@ class HttpClient:
         """
         url = self._build_url(path)
         clean = self._clean_params(params)
+        idempotent = method == "GET" or bool(headers and headers.get("X-Idempotency-Key"))
         last_exc: Optional[Exception] = None
 
         for attempt in range(self._retries + 1):
@@ -291,74 +299,138 @@ class HttpClient:
                     params=clean,
                     headers=headers,
                 )
-                return self._handle_response(resp, attempt)
+                return self._handle_response(resp)
             except (RateLimitError, httpx.TimeoutException, httpx.ConnectError) as exc:
                 last_exc = exc
-                if attempt >= self._retries:
+                retryable = isinstance(exc, RateLimitError) or idempotent
+                if not retryable or attempt >= self._retries:
                     raise
                 delay = self._retry_delay(exc, attempt)
                 time.sleep(delay)
 
         raise last_exc  # type: ignore[misc]
 
-    def _handle_response(self, resp: httpx.Response, attempt: int) -> Any:
+    def _handle_response(self, resp: httpx.Response) -> Any:
         """Process an HTTP response, raising on errors.
 
-        Handles 429 (rate limit), 204 / empty-body (returns ``None``),
-        and the standard ``{"success": bool, "data": ...}`` envelope.
+        Handles, in order:
+
+        * **429** — raises :class:`~qck._errors.RateLimitError` with the
+          ``Retry-After`` header and the API's message/code when present.
+        * **Empty body** — for 204 / zero-length bodies, raises a typed
+          exception when the status is an error, otherwise returns ``None``.
+        * **Standard envelope** ``{"success", "data", "error", "meta"}`` —
+          on success, returns ``data``; when ``meta`` carries pagination,
+          returns ``{"data", "page", "per_page", "total", "total_pages"}``.
+        * **Flat middleware errors** ``{"success": false, "error": "CODE",
+          "message": "..."}`` — raised with the real code attached.
+        * **Bulk partial results** (207/422) — ``success: false`` with
+          ``data`` present returns the data instead of raising, so callers
+          receive the ``BulkCreateResult`` with per-item failures.
 
         Args:
             resp: The ``httpx.Response`` to process.
-            attempt: Current retry attempt number (0-based).
 
         Returns:
-            The ``data`` field from the API envelope, or the raw parsed
-            JSON if the response is not wrapped in the standard envelope.
+            The unwrapped response data.
 
         Raises:
             RateLimitError: On HTTP 429 responses.
-            QCKError: When the envelope indicates ``success: false``.
+            QCKError: On error responses or undecodable bodies.
         """
         if resp.status_code == 429:
             retry_after = int(resp.headers.get("Retry-After", "60"))
             retry_after = min(retry_after, _MAX_RETRY_DELAY)
-            raise RateLimitError(
-                message="Rate limit exceeded",
-                retry_after=retry_after,
-            )
+            message = "Rate limit exceeded"
+            code = "RATE_LIMIT_EXCEEDED"
+            try:
+                body = resp.json()
+            except Exception:
+                body = None
+            if isinstance(body, dict):
+                message = body.get("message") or message
+                err = body.get("error")
+                if isinstance(err, str) and err:
+                    code = err
+                elif isinstance(err, dict):
+                    code = err.get("code") or code
+                    message = err.get("message") or message
+            raise RateLimitError(message=message, retry_after=retry_after, code=code)
 
-        if resp.status_code == 204 or resp.headers.get("content-length") == "0":
+        empty_body = resp.status_code == 204 or resp.headers.get("content-length") == "0"
+        if empty_body:
+            if resp.status_code >= 400:
+                self._raise_error(
+                    resp.status_code, "UNKNOWN", resp.text or f"HTTP {resp.status_code}"
+                )
             return None
 
-        self._raise_for_status(resp)
-
-        body = resp.json()
+        try:
+            body = resp.json()
+        except Exception as exc:
+            if resp.status_code >= 400:
+                self._raise_error(
+                    resp.status_code, "UNKNOWN", resp.text or f"HTTP {resp.status_code}"
+                )
+            raise QCKError(
+                f"Failed to decode JSON response: {exc}",
+                resp.status_code,
+                "INVALID_RESPONSE",
+            ) from exc
 
         if isinstance(body, dict) and "success" in body:
             if not body.get("success"):
-                err = body.get("error", {})
-                raise QCKError(
-                    message=err.get("message", "Unknown error"),
-                    status=resp.status_code,
-                    code=err.get("code", "UNKNOWN"),
-                )
-            return body.get("data")
+                # Bulk 207/422: partial-success responses carry the result
+                # data alongside success=false. Return it instead of raising.
+                if body.get("data") is not None:
+                    return body.get("data")
+
+                err = body.get("error")
+                if isinstance(err, str):
+                    # Flat middleware error: {"error": "CODE", "message": "..."}
+                    code = err or "UNKNOWN"
+                    message = body.get("message") or "Unknown error"
+                elif isinstance(err, dict):
+                    code = err.get("code") or "UNKNOWN"
+                    message = err.get("message") or "Unknown error"
+                else:
+                    code = "UNKNOWN"
+                    message = body.get("message") or "Unknown error"
+                self._raise_error(resp.status_code, code, message)
+
+            meta = body.get("meta")
+            data = body.get("data")
+            if isinstance(meta, dict) and meta.get("page") is not None:
+                return {
+                    "data": data,
+                    "page": meta.get("page"),
+                    "per_page": meta.get("per_page"),
+                    "total": meta.get("total"),
+                    "total_pages": meta.get("total_pages"),
+                }
+            return data
+
+        if resp.status_code >= 400:
+            self._raise_error(resp.status_code, "UNKNOWN", resp.text)
 
         return body
 
     @staticmethod
-    def _raise_for_status(resp: httpx.Response) -> None:
-        """Raise a typed SDK exception for 4xx/5xx responses.
+    def _raise_error(status: int, code: str, message: str) -> None:
+        """Raise the typed SDK exception for an error status.
 
-        Maps HTTP status codes to the appropriate exception class:
+        Maps HTTP status codes to the appropriate exception class while
+        preserving the API's machine-readable error code:
 
         * 400 -> :class:`~qck._errors.ValidationError`
         * 401 -> :class:`~qck._errors.AuthenticationError`
         * 404 -> :class:`~qck._errors.NotFoundError`
-        * Other 4xx/5xx -> :class:`~qck._errors.QCKError`
+        * Other -> :class:`~qck._errors.QCKError`
 
         Args:
-            resp: The ``httpx.Response`` to inspect.
+            status: HTTP status code.
+            code: Machine-readable error code from the API response.
+            message: Human-readable error description.
 
         Raises:
             ValidationError: On HTTP 400.
@@ -366,25 +438,13 @@ class HttpClient:
             NotFoundError: On HTTP 404.
             QCKError: On all other error status codes.
         """
-        if resp.status_code < 400:
-            return
-
-        try:
-            body = resp.json()
-            msg = body.get("error", {}).get("message", resp.text)
-            code = body.get("error", {}).get("code", "UNKNOWN")
-        except Exception:
-            msg = resp.text
-            code = "UNKNOWN"
-
-        if resp.status_code == 400:
-            raise ValidationError(msg)
-        if resp.status_code == 401:
-            raise AuthenticationError(msg)
-        if resp.status_code == 404:
-            raise NotFoundError(msg)
-
-        raise QCKError(msg, resp.status_code, code)
+        if status == 400:
+            raise ValidationError(message, code=code)
+        if status == 401:
+            raise AuthenticationError(message, code=code)
+        if status == 404:
+            raise NotFoundError(message, code=code)
+        raise QCKError(message, status, code)
 
     @staticmethod
     def _retry_delay(exc: Exception, attempt: int) -> float:

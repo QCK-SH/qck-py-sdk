@@ -23,7 +23,8 @@ link = client.links.create({"url": "https://example.com"})
 print(link["short_url"])  # https://qck.sh/abc123
 
 # Get analytics
-summary = client.analytics.summary({"days": 30})
+result = client.analytics.summary({"days": 30})
+summary = result["analytics"]
 print(f"{summary['total_clicks']} clicks, {summary['unique_visitors']} visitors")
 
 client.close()
@@ -33,7 +34,7 @@ client.close()
 
 ```python
 with QCK(api_key="qck_your_api_key") as client:
-    links = client.links.list({"page": 1, "limit": 10})
+    links = client.links.list({"page": 1, "per_page": 10})
     for link in links["data"]:
         print(f"{link['id']} → {link['original_url']}")
 ```
@@ -42,19 +43,19 @@ with QCK(api_key="qck_your_api_key") as client:
 
 ```python
 client = QCK(
-    api_key="qck_your_api_key",                     # Required — your API key
-    base_url="https://api.qck.sh/public-api/v1",    # Optional — API base URL
-    timeout=30,                                       # Optional — request timeout in seconds (default: 30)
-    retries=3,                                        # Optional — automatic retries (default: 3)
+    api_key="qck_your_api_key",                 # Required — your API key
+    base_url="https://qck.sh/public-api/v1",    # Optional — API base URL
+    timeout=30,                                  # Optional — request timeout in seconds (default: 30)
+    retries=3,                                   # Optional — automatic retries (default: 3)
 )
 ```
 
-| Option     | Type  | Default                                 | Description                     |
-|------------|-------|-----------------------------------------|---------------------------------|
-| `api_key`  | `str` | —                                       | **Required.** Your QCK API key  |
-| `base_url` | `str` | `'https://api.qck.sh/public-api/v1'`    | API base URL                    |
-| `timeout`  | `int` | `30`                                    | Request timeout in seconds      |
-| `retries`  | `int` | `3`                                     | Max automatic retries           |
+| Option     | Type  | Default                             | Description                     |
+|------------|-------|-------------------------------------|---------------------------------|
+| `api_key`  | `str` | —                                   | **Required.** Your QCK API key  |
+| `base_url` | `str` | `'https://qck.sh/public-api/v1'`    | API base URL                    |
+| `timeout`  | `int` | `30`                                | Request timeout in seconds      |
+| `retries`  | `int` | `3`                                 | Max automatic retries           |
 
 ## Resources
 
@@ -97,33 +98,36 @@ result = client.links.list({
     "sort_by": "created_at",           # optional
     "sort_order": "desc",              # optional, 'asc' | 'desc'
 })
-# result["data"]: list of links, result["total"], result["page"], result["limit"]
+# result["data"]: list of links
+# result["page"], result["per_page"], result["total"], result["total_pages"]
 
 # Get a single link
 link = client.links.get("link_id")
 
-# Update a link
+# Update a link (the destination URL is immutable — create a new link to change it)
 updated = client.links.update("link_id", {
     "title": "New Title",
     "is_active": False,
     "tags": ["updated"],
-    "url": "https://new-destination.com",
 })
 
 # Delete a link
 client.links.delete("link_id")
 
-# Bulk create
-links = client.links.bulk_create([
+# Bulk create — supports partial success (HTTP 207/422 still return a result)
+result = client.links.bulk_create([
     {"url": "https://example.com/a"},
     {"url": "https://example.com/b", "custom_alias": "b-link"},
     {"url": "https://example.com/c", "tags": ["batch"]},
 ])
+# result["created"]: [{"index": 0, "link": {...}}, ...]
+# result["failed"]: [{"index": 2, "url": "...", "error": "...", "error_type": "..."}]
+# result["total_requested"], result["success_count"], result["failure_count"]
 
 # Get link stats
 stats = client.links.get_stats("link_id")
-# stats["total_clicks"], stats["unique_clicks"]
-# stats["clicks_by_country"], stats["clicks_by_device"], stats["clicks_by_referrer"]
+# stats["total_clicks"], stats["unique_visitors"], stats["bot_clicks"], stats["human_clicks"]
+# stats["days_active"], stats["average_clicks_per_day"], stats["conversion_rate"]
 
 # Upload OG image
 client.links.upload_og_image("link_id", "/path/to/image.png")
@@ -141,7 +145,7 @@ client.links.delete_og_image("link_id")
 | `get(link_id)` | `str` | `Link` | Get a link by ID |
 | `update(link_id, params)` | `str, UpdateLinkParams` | `Link` | Update a link |
 | `delete(link_id)` | `str` | `None` | Delete a link |
-| `bulk_create(links)` | `list[CreateLinkParams]` | `list[Link]` | Create multiple links |
+| `bulk_create(links)` | `list[CreateLinkParams]` | `BulkCreateResult` | Create multiple links (partial success supported) |
 | `get_stats(link_id)` | `str` | `LinkStats` | Get click statistics |
 | `upload_og_image(link_id, file_path)` | `str, str` | `dict` | Upload OG image from file path |
 | `delete_og_image(link_id)` | `str` | `None` | Remove OG image |
@@ -150,9 +154,14 @@ client.links.delete_og_image("link_id")
 
 Query aggregate analytics across all links or filtered by domain.
 
+Every analytics method returns `{"analytics": ..., "usage": {...}}` — the
+endpoint-specific payload plus tier usage metadata (`clicks_this_month`,
+`click_limit`, `limit_exceeded`, `tier`, `retention_days`, and an optional
+`cutoff_date` when query windows are clamped).
+
 ```python
 # Summary stats
-summary = client.analytics.summary({
+result = client.analytics.summary({
     "days": 30,                        # last N days (shorthand)
     # OR use date range:
     # "start_date": "2026-01-01",
@@ -160,39 +169,43 @@ summary = client.analytics.summary({
     "bot_filter": "real",              # 'real' | 'bot' | 'all' (default: 'real')
     "domain_name": "links.example.com",  # optional, filter by domain
 })
+summary = result["analytics"]
 # summary["total_clicks"], summary["unique_visitors"], summary["total_links"]
 # summary["today_clicks"], summary["yesterday_clicks"], summary["active_links"]
+# summary["links_this_month"], summary["clicks_this_month"]
+usage = result["usage"]
+# usage["clicks_this_month"], usage["click_limit"], usage["limit_exceeded"]
 
 # Timeseries data
-points = client.analytics.timeseries({"days": 7})
-for point in points:
-    print(f"{point['timestamp']}: {point['clicks']} clicks, {point['unique_visitors']} unique")
+result = client.analytics.timeseries({"days": 7})
+for point in result["analytics"]:
+    print(f"{point['date']}: {point['clicks']} clicks, {point['unique_visitors']} unique")
 
 # Geographic breakdown
-geo = client.analytics.geo({"days": 30})
-for entry in geo:
-    print(f"{entry['country']} ({entry['country_code']}): {entry['clicks']} clicks")
+result = client.analytics.geo({"days": 30})
+for entry in result["analytics"]:
+    print(f"{entry['country_code']}: {entry['clicks']} clicks")
 
 # Device breakdown
-devices = client.analytics.devices({"days": 30})
-for entry in devices:
+result = client.analytics.devices({"days": 30})
+for entry in result["analytics"]:
     print(f"{entry['device_type']} / {entry['browser']} / {entry['os']}: {entry['clicks']}")
 
 # Referrer breakdown
-referrers = client.analytics.referrers({"days": 30})
-for entry in referrers:
+result = client.analytics.referrers({"days": 30})
+for entry in result["analytics"]:
     print(f"{entry['referrer']}: {entry['clicks']} clicks")
 
 # Hourly distribution
-hourly = client.analytics.hourly({"days": 7})
-for entry in hourly:
+result = client.analytics.hourly({"days": 7})
+for entry in result["analytics"]:
     print(f"{entry['hour']}:00 — {entry['clicks']} clicks")
 ```
 
 #### Analytics API Reference
 
-| Method | Parameters | Returns | Description |
-|--------|-----------|---------|-------------|
+| Method | Parameters | Returns (`analytics` key) | Description |
+|--------|-----------|---------------------------|-------------|
 | `summary(params?)` | `AnalyticsSummaryParams` | `AnalyticsSummary` | Aggregate summary stats |
 | `timeseries(params?)` | `TimeseriesParams` | `list[TimeseriesPoint]` | Clicks over time |
 | `geo(params?)` | `GeoAnalyticsParams` | `list[GeoAnalyticsEntry]` | Geographic breakdown |
@@ -200,14 +213,17 @@ for entry in hourly:
 | `referrers(params?)` | `ReferrerAnalyticsParams` | `list[ReferrerAnalyticsEntry]` | Traffic source breakdown |
 | `hourly(params?)` | `HourlyAnalyticsParams` | `list[HourlyAnalyticsEntry]` | Hourly click distribution |
 
+All methods return `AnalyticsResult` (`{"analytics": ..., "usage": AnalyticsUsage}`).
+
 ### Conversions
 
 Track and analyze conversion events tied to your links.
 
 ```python
 # Track a conversion
+# Requires an API key with the journey:write permission.
 client.conversions.track({
-    "link_id": "your-link-uuid",            # required — link short code
+    "link_id": "your-link-uuid",       # required — the link UUID (NOT the short code)
     "visitor_id": "user-456",          # required — your user ID
     "name": "purchase",                # required — conversion name
     "session_id": "sess-789",          # optional
@@ -216,6 +232,7 @@ client.conversions.track({
     "page_url": "/checkout",           # optional
     "properties": {"plan": "pro"},     # optional — stored in ClickHouse JSON column
 })
+# Each call sends a unique X-Idempotency-Key, so retries can't double-count.
 
 # Conversion summary (org-wide or scoped)
 summary = client.conversions.summary({
@@ -321,10 +338,12 @@ funnel = client.journey.get_funnel("link-uuid", {
 })
 
 # List sessions
-sessions = client.journey.list_sessions("link-uuid", {"period": "7d", "limit": 10})
+page = client.journey.list_sessions("link-uuid", {"period": "7d", "limit": 10})
+# page["sessions"], page["total"], page["page"], page["limit"]
 
 # List events
-events = client.journey.list_events("link-uuid", {"event_type": "custom", "period": "7d"})
+page = client.journey.list_events("link-uuid", {"event_type": "custom", "period": "7d"})
+# page["events"], page["total"], page["page"], page["limit"]
 ```
 
 **cURL example:**
@@ -333,7 +352,7 @@ events = client.journey.list_events("link-uuid", {"event_type": "custom", "perio
 curl -X POST https://qck.sh/public-api/v1/journey/events \
   -H "X-API-Key: qck_your_api_key_here" \
   -H "Content-Type: application/json" \
-  -d '{"events":[{"link_id":"abc123","visitor_id":"user-456","event_type":"page_view","page_url":"/pricing"}]}'
+  -d '{"events":[{"link_id":"550e8400-e29b-41d4-a716-446655440000","visitor_id":"user-456","event_type":"page_view","page_url":"/pricing"}]}'
 ```
 
 #### Journey API Reference
@@ -343,8 +362,8 @@ curl -X POST https://qck.sh/public-api/v1/journey/events \
 | `ingest(params)` | `IngestEventsParams` | `None` | Batch ingest journey events (1-100) |
 | `get_summary(link_id, params?)` | `str, JourneyQueryParams` | `JourneyLinkSummary` | Link journey summary |
 | `get_funnel(link_id, params)` | `str, FunnelParams` | `FunnelResult` | Funnel analysis |
-| `list_sessions(link_id, params?)` | `str, ListJourneySessionsParams` | `PaginatedResponse` | List visitor sessions |
-| `list_events(link_id, params?)` | `str, ListJourneyEventsParams` | `PaginatedResponse` | List journey events |
+| `list_sessions(link_id, params?)` | `str, ListJourneySessionsParams` | `JourneySessionsPage` | List visitor sessions |
+| `list_events(link_id, params?)` | `str, ListJourneyEventsParams` | `JourneyEventsPage` | List journey events |
 
 ### Webhooks
 
@@ -382,12 +401,10 @@ updated = client.webhooks.update("webhook_id", {
 # Delete a webhook
 client.webhooks.delete("webhook_id")
 
-# View delivery history (paginated)
-deliveries = client.webhooks.list_deliveries("webhook_id", {
-    "page": 1,
-    "limit": 20,
-})
-# deliveries["data"]: list of WebhookDelivery
+# View delivery history (50 most recent, newest first — not paginated)
+deliveries = client.webhooks.list_deliveries("webhook_id")
+for d in deliveries:
+    print(d["event_type"], d["status"], d["http_status"])
 
 # Send a test event
 client.webhooks.test("webhook_id")
@@ -411,6 +428,7 @@ client.webhooks.test("webhook_id")
 | `SUBSCRIPTION_UPGRADED` | `subscription.upgraded` | billing |
 | `SUBSCRIPTION_DOWNGRADED` | `subscription.downgraded` | billing |
 | `BULK_IMPORT_COMPLETED` | `bulk_import.completed` | bulk |
+| `CONVERSION` | `conversion` | journey |
 
 Use `WEBHOOK_EVENT_CATEGORIES` to subscribe to all events in a category:
 
@@ -430,7 +448,7 @@ WEBHOOK_EVENT_CATEGORIES["billing"]  # all billing events
 | `get(webhook_id)` | `str` | `WebhookEndpoint` | Get a webhook by ID |
 | `update(webhook_id, params)` | `str, UpdateWebhookParams` | `WebhookEndpoint` | Update a webhook |
 | `delete(webhook_id)` | `str` | `None` | Delete a webhook |
-| `list_deliveries(webhook_id, params?)` | `str, ListWebhookDeliveriesParams` | `PaginatedResponse` | Delivery history |
+| `list_deliveries(webhook_id)` | `str` | `list[WebhookDelivery]` | 50 most recent deliveries |
 | `test(webhook_id)` | `str` | `None` | Send a test event |
 
 ### Domains
@@ -440,7 +458,9 @@ List custom domains configured for your organization.
 ```python
 domains = client.domains.list()
 for domain in domains:
-    print(f"{domain['domain']} (verified: {domain['is_verified']}, default: {domain['is_default']})")
+    print(f"{domain['domain']} (status: {domain['status']})")
+# status: 'pending' | 'provisioning' | 'provisioning_failed' | 'active' | 'rejected' | 'suspended'
+# Domain fields are camelCase: verificationToken, dnsVerifiedAt, sslStatus, healthStatus, ...
 ```
 
 #### Domains API Reference
@@ -481,45 +501,48 @@ except QCKError as e:
 
 ### Error Classes
 
-| Class | HTTP Status | Code | Attributes |
-|-------|------------|------|------------|
+The machine-readable `code` attribute is passed through from the API
+response (e.g. `MISSING_API_KEY`, `INVALID_API_KEY`, `RATE_LIMIT_EXCEEDED`).
+
+| Class | HTTP Status | Typical Code | Attributes |
+|-------|------------|--------------|------------|
 | `QCKError` | any | varies | `status`, `code`, `message` |
-| `AuthenticationError` | 401 | `AUTHENTICATION_ERROR` | — |
-| `RateLimitError` | 429 | `RATE_LIMIT_ERROR` | `retry_after` (seconds) |
-| `NotFoundError` | 404 | `NOT_FOUND` | — |
-| `ValidationError` | 400 | `VALIDATION_ERROR` | — |
+| `AuthenticationError` | 401 | `MISSING_API_KEY` / `INVALID_API_KEY` | `status`, `code` |
+| `RateLimitError` | 429 | `RATE_LIMIT_EXCEEDED` | `retry_after` (seconds) |
+| `NotFoundError` | 404 | `NOT_FOUND` | `status`, `code` |
+| `ValidationError` | 400 | `VALIDATION_ERROR` | `status`, `code` |
 
 ### Automatic Retries
 
-The SDK automatically retries requests on:
+The SDK automatically retries:
 
-- **Rate limits (429)** — respects `Retry-After` header, falls back to 60s
-- **Network errors** — connection failures, DNS resolution errors
-- **Timeouts** — request timeout exceeded
+- **Rate limits (429)** — for all requests; respects the `Retry-After` header, falls back to 60s (capped at 120s)
+- **Network errors and timeouts** — only for idempotent requests: `GET` requests, or requests carrying an `X-Idempotency-Key` header (journey ingest, conversion tracking). A timed-out plain `POST`/`PATCH`/`PUT`/`DELETE` is **not** retried, since the server may already have processed it.
 
-Retries use exponential backoff (capped at 120s). Rate limit retries respect the server's `Retry-After` header.
+Non-rate-limit retries use exponential backoff (capped at 10s per attempt).
 
 ## Pagination
 
-Methods that return lists use cursor-based pagination:
+List endpoints use page-based pagination. The backend carries pagination
+in the response envelope's `meta` block; the SDK merges it with the data
+array:
 
 ```python
 result = client.links.list({"page": 1, "per_page": 25})
 
-print(result["data"])   # list of links
-print(result["total"])  # total number of items
-print(result["page"])   # current page
-print(result["limit"])  # items per page
+print(result["data"])         # list of links
+print(result["page"])         # current page (1-based)
+print(result["per_page"])     # items per page
+print(result["total"])        # total number of items
+print(result["total_pages"])  # total number of pages
 
 # Iterate through all pages
 all_links = []
-page = 1
-while True:
+for page in range(1, 2**31):
     result = client.links.list({"page": page, "per_page": 100})
     all_links.extend(result["data"])
-    if len(all_links) >= result["total"]:
+    if page >= result["total_pages"]:
         break
-    page += 1
 ```
 
 ## Type Safety
@@ -527,13 +550,16 @@ while True:
 The SDK uses `TypedDict` for all request parameters and response types. Your IDE will provide autocompletion and type checking:
 
 ```python
-from qck._types import (
+from qck import (
     Link,
     CreateLinkParams,
     UpdateLinkParams,
     ListLinksParams,
     LinkStats,
+    BulkCreateResult,
+    AnalyticsResult,
     AnalyticsSummary,
+    AnalyticsUsage,
     TimeseriesPoint,
     GeoAnalyticsEntry,
     DeviceAnalyticsEntry,

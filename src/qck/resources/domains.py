@@ -10,7 +10,7 @@ Example::
     client = QCK(api_key="qck_...")
     domains = client.domains.list()
     for d in domains:
-        print(d["domain"], d["is_verified"])
+        print(d["domain"], d["status"])
 """
 
 from __future__ import annotations
@@ -45,12 +45,16 @@ class DomainsResource:
         """List all custom domains for the organization associated with the API key.
 
         Returns:
-            List of domain objects including verification status.
+            List of domain objects. Fields are serialised in camelCase
+            (e.g. ``verificationToken``, ``dnsVerifiedAt``); ``status``
+            is one of ``pending``, ``provisioning``,
+            ``provisioning_failed``, ``active``, ``rejected``, or
+            ``suspended``.
 
         Example:
             >>> domains = client.domains.list()
             >>> for d in domains:
-            ...     print(d["domain"], d["is_verified"])
+            ...     print(d["domain"], d["status"])
         """
         response = self._client.get("/domains")
         return response["domains"]
